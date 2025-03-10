@@ -1,8 +1,14 @@
-import pandas as pd
-from mapAndOrder import generate_orders, Order
-from simulation import simulation
+import sys
+import os
 import time
 import numpy as np
+import pandas as pd
+
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+from mapAndOrder import generate_orders, Order
+from simulation import simulation
+
+
 data = {'AGV num': [],
         'order num': [],
         'time step': [],  # 效率指标
@@ -48,11 +54,12 @@ summary = pd.DataFrame(data,)
 #     lower_bound = mean[2:] - 1.96 * standard_error[2:]
 #     summary.loc[i] = np.concatenate((mean, upper_bound, lower_bound)).round(4)
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
-ORDER_NUM = 7  # 订单数量
-order_list = generate_orders(seed=100, numOfOrders=ORDER_NUM)  # 生成订单
-for order in order_list:
-    order.show()
 
-# 测试仿真使用该函数
-simulation(seed=100, AGV_NUM=12, ORDER_NUM=ORDER_NUM, order_list=order_list, interval=200, show=True, save_fig=False, heat_map=False)
+if __name__ == '__main__':
+    ORDER_NUM = 1  # 订单数量
+    order_list = generate_orders(seed=100, numOfOrders=ORDER_NUM)  # 生成订单
+    for order in order_list:
+        order.show()
 
+    # 测试仿真使用该函数
+    simulation(seed=100, AGV_NUM=12, ORDER_NUM=ORDER_NUM, order_list=order_list, interval=200, show=True, save_fig=False, heat_map=False)

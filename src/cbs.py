@@ -1,5 +1,6 @@
 import heapq
 from a_star import astar
+
 def detect_collision(path1, path2):
     """
     功能：检测两路径的碰撞

@@ -1,89 +1,79 @@
-# 项目介绍
+# Project Description
 
-Kiva系统通过多AGV协同实现实现货到人的自动分拣，系统的核心是动态的多智能体路径规划（MAPF）问题。该项目利用cbs算法对Kiva式自动分拣系统进行仿真。
+The Kiva system achieves automated sorting with goods-to-person through multi-AGV collaboration. The core of the system is the dynamic Multi-Agent Path Finding (MAPF) problem. This project simulates the Kiva-style automated sorting system using the CBS algorithm.
 
-项目默认的地图是22*48的栅格地图，如下所示
+The default map of the project is a 22*48 grid map, as shown below:
 
-![30 orders, 47 AGVs](C:\Users\62687\Desktop\大四\课程设计\代码\Kiva分拣系统仿真-ver1.5\gifs\30 orders, 47 AGVs.gif)
+![demo(47agv)](gifs\demo(47agv).gif)
 
-AGV只能沿水平或垂直方向移动，速度恒定为1栅格/时间步，不考虑启动与制动时间，转向90°需2时间步，转向180°需3时间步（可自定义）。
+AGVs can only move horizontally or vertically at a constant speed of 1 grid/time step. The start and stop times are not considered. Turning 90° requires 2 time steps, and turning 180° requires 3 time steps (customizable).
 
-订单包含若干个目标货架的位置、一个工作台的位置，分配逻辑为将目标货架就近分配给附近空闲AGV。
+An order includes the positions of several target shelves and a workstation. The allocation logic assigns the target shelves to the nearest available AGV.
 
-订单完成流程如下：
+The order completion process is as follows:
 
-1. 订单下达
-2. AGV从起点出发至指定货架
-3. 抬起货架
-4. 将货架运送至目标工作台
-5. 等待工人拣选
-6. 将货架送还至原位置
-7. 放下货架
-8. 执行下一个订单
+1. Order issued
+2. AGV departs from the starting point to the designated shelf
+3. Lifts the shelf
+4. Transports the shelf to the target workstation
+5. Waits for the worker to pick
+6. Returns the shelf to its original position
+7. Lowers the shelf
+8. Executes the next order
 
-##### AGV状态转换流程图
+##### AGV State Transition Diagram
 
-![AGV状态流程图](C:\Users\62687\Desktop\大四\课程设计\代码\Kiva分拣系统仿真-ver1.5\AGV状态流程图.png)
+![AGV_status_diagram](pics\AGV_status_diagram.png)
 
-如图所示，仿真开始时所有AGV都是available状态，就近分配订单后进入to shelf状态（前往货架）。抵达货架位置并将其抬起后会检测目标工作台是否被占用或者预订，若被占用则进入waiting to select状态（等待前往分拣），若未被占用则进入to select状态（前往分拣）。抵达工作台后进入selecting状态（分拣中），分拣结束后进入return shelf状态（归还货架）。抵达货架位置后会检测电量是否充足，若低于阈值则检测当前是否有可用的充电桩，没有则进入waiting to charge状态（等待充电），有可用充电桩则进入to charge状态（前往充电）。抵达充电桩位置后进入charging状态（充电中）。若电量充足则重新进入available状态，继续检测是否有新订单，若无新订单则会检测AGV是否已经处于起点位置，若没有位于起点位置则进入back to start状态（返回起点）。到达起点后会检测该AGV是否是最后一个到达起点的AGV，若否则进入arrived at start状态（进入该状态会使当前所有运动状态的AGV重新规划路径，避免其通过该起点），若是直接进入waiting at start状态。当所有AGV进入waiting at start状态，仿真结束。此外，完成上一单未充电的AGV接到新订单后，会检测新订单的目标货架是否与上一单相同，若是则检测目标工作台是否可用，进入waiting to select或to select状态。
+As shown in the figure, all AGVs are in the available state at the start of the simulation. After the nearest order is assigned, they enter the to shelf state (heading to the shelf). Upon reaching the shelf and lifting it, they check if the target workstation is occupied or reserved. If occupied, they enter the waiting to select state (waiting to sort). If not occupied, they enter the to select state (heading to sort). Upon reaching the workstation, they enter the selecting state (sorting). After sorting, they enter the return shelf state (returning the shelf). Upon reaching the shelf position, they check if the battery is sufficient. If below the threshold, they check if there is an available charging station. If not, they enter the waiting to charge state (waiting to charge). If there is an available charging station, they enter the to charge state (heading to charge). Upon reaching the charging station, they enter the charging state (charging). If the battery is sufficient, they re-enter the available state and continue to check for new orders. If there are no new orders, they check if the AGV is already at the starting point. If not, they enter the back to start state (returning to the starting point). Upon reaching the starting point, they check if the AGV is the last one to reach the starting point. If not, they enter the arrived at start state (this state causes all AGVs in motion to re-plan their paths to avoid passing through the starting point). If it is the last one, it directly enters the waiting at start state. When all AGVs enter the waiting at start state, the simulation ends. Additionally, an AGV that did not charge after completing the previous order will check if the target shelf of the new order is the same as the previous one. If so, it checks if the target workstation is available and enters the waiting to select or to select state.
 
-# 环境依赖
+# Required Libraries
 
-##### 运行系统
+To install the required libraries, run the following command:
 
-windows11 python 3.10.9 (Pycharm IDE)
+```bash
+pip install -r requirements.txt
+```
 
-##### 依赖包
+# Directory Structure
 
-pandas 1.5.3
-numpy  1.23.5
-matplotlib 3.7.0
+```
+├── README.md            
+├── pics          
+├── src                       
+│   ├── a_star.py           
+│   ├── agv.py                
+│   ├── cbs.py                 
+│   ├── mapAndOrder.py 
+│   ├── main.py        
+│   ├── visualization.py      
+│   └── simulation.py                            
+└── maps          
+```
 
-# 目录结构描述
+# Usage Instructions
 
-├── ReadMe.md                      // 说明文档
+Run the experiment in `src/main.py`.
 
-├── a_star.py                           // 带约束的时空A*算法
+Due to different monitor resolutions, the text in the generated visualization interface may vary in size, but the saved GIF interface will be normal.
 
-├── agv.py                               // AGV对象
+##### Custom Map
 
-├── cbs.py                               // cbs算法
+![Custom Map Example](pics/map_example.png)
 
-├── mapAndOrder.py           // 地图和订单生成与分配
+As shown in the figure, -1 represents the map boundary (currently only rectangular maps are supported, with arbitrary map sizes), 1 represents shelves, 2 represents workstations, and 3 represents charging stations. The quantity and positions of these elements can be customized. Note the following:
 
-├── visualization.py              // 可视化
+1. Shelves and charging stations cannot be placed in the first row because the first row is the AGV entrance (starting point) by default.
+2. Workstations can only be placed in the bottom row.
+3. The boundary must be aligned with the first row and first column in Excel; otherwise, there may be issues with reading the map.
 
-├── simulation.py                 // 仿真函数
+##### AGV Parameters
 
-└── run experiment.py        // 运行实验
+1. The custom AGV turning duration can be modified by changing the variables `TIME_OF_TURN90` and `TIME_OF_TURN180` in `a_star.py`. The default is 2 seconds for a 90° turn and 3 seconds for a 180° turn.
+2. The full battery capacity of the AGV is defined by `FULL_CHARGE` in `agv.py`, with a default value of 3600 (since the M200 can work for 1 hour after charging for 10 minutes, 3600 represents full battery capacity, which can be consumed in approximately 3600 seconds (time steps)).
+3. The battery consumption rate is defined by `BATTERY_CONSUMING_SPEED` in `agv.py`, with a default value of 1 (per time step).
+4. The charging speed is defined by `CHARGING_SPEED` in `agv.py`, with a default value of 6 times the battery consumption rate (since the M200 can work for 1 hour after charging for 10 minutes, the charging speed is 6 times the consumption rate).
 
-# 使用说明
+# Author
 
-在run experiment.py中运行即可。
-
-由于不同显示器分辨率不同，生成的可视化界面的文字可能会大小失常，但保存的动图界面一定是正常的。
-
-##### 自定义地图
-
-![自定义地图示例](C:\Users\62687\Desktop\大四\课程设计\代码\Kiva分拣系统仿真-ver1.3\自定义地图示例.png)
-
-如图所示，-1表示地图边界（目前只支持矩形地图，地图尺寸任意），1表示货架，2表示工作台，3表示充电桩，三者的数量和位置可以自定义，注意事项如下：
-
-1. 货架和充电桩不可以放在第一行，因为第一行默认为AGV入口（起点）
-2. 工作台只能放在最下面一行
-3. 边界必须在excel中贴齐第一行第一列，否则读取可能会出问题
-
-##### AGV参数
-
-1. 自定义AGV转弯的是时长可通过修改a_star.py中的变量TIME_OF_TURN90, TIME_OF_TURN180实现，默认是转90°需要2秒，180°需要3秒
-2. AGV的满电量为agv.py中的FULL_CHARGE，默认为3600（因为M200充电十分钟可工作1小时，将3600作为满电量代表可消耗约3600秒（时间步））
-3. 电量消耗速度为agv.py中的BATTERY_CONSUMING_SPEED，默认为1（每时间步）
-4. 充电速度为agv.py中的CHARGING_SPEED，默认为电量消耗速度的6倍（因为M200充电十分钟可工作1小时，充电速度为耗电速度的6倍）
-
-#  作者
-
-郑楚阳 清华大学工业工程系学生 邮箱：zhengcy18@mails.tsinghua.edu.cn
-
-
-
- 
+Zheng Chuyang, Student of the Department of Industrial Engineering, Tsinghua University. Email: zhengcy24@mails.tsinghua.edu.cn
