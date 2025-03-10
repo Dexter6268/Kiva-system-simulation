@@ -4,7 +4,7 @@ The Kiva system achieves automated sorting with goods-to-person through multi-AG
 
 The default map of the project is a 22*48 grid map, as shown below:
 
-![map1 7 orders, 12 AGVs.gif](gifs\map1 7 orders, 12 AGVs.gif)
+<!-- ![map1 7 orders, 12 AGVs.gif](gifs\map1 7 orders, 12 AGVs.gif) -->
 
 AGVs can only move horizontally or vertically at a constant speed of 1 grid/time step. The start and stop times are not considered. Turning 90° requires 2 time steps, and turning 180° requires 3 time steps (customizable).
 
