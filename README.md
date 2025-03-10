@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 # Usage Instructions
 
-Run the experiment in `src/main.py`.
+Run the experiment in `main.py`.
 
 Due to different monitor resolutions, the text in the generated visualization interface may vary in size, but the saved GIF interface will be normal.
 
@@ -76,4 +76,6 @@ As shown in the figure, -1 represents the map boundary (currently only rectangul
 
 # Author
 
-Zheng Chuyang, Student of the Department of Industrial Engineering, Tsinghua University. Email: zhengcy24@mails.tsinghua.edu.cn
+Zheng Chuyang, Student of the Department of Industrial Engineering, Tsinghua University. 
+
+Email: zhengcy24@mails.tsinghua.edu.cn
