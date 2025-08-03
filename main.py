@@ -4,39 +4,42 @@ import time
 import numpy as np
 import pandas as pd
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
 from mapAndOrder import generate_orders, Order
 from simulation import simulation
 
 
-data = {'AGV num': [],
-        'order num': [],
-        'time step': [],  # 效率指标
-        'revenue per hour': [],  # 利润指标
-        'agv utility': [],  # 利用率指标
-        'total net revenue': [],
-        'revenue': [],
-        'AGV cost': [],
-        'charging cost': [],
-        'worker cost': [],
-        'time step ub': [],  # 各指标上界
-        'revenue per hour ub': [],
-        'agv utility ub': [],
-        'total net revenue ub': [],
-        'revenue ub': [],
-        'AGV cost ub': [],
-        'charging cost ub': [],
-        'worker cost ub': [],
-        'time step lb': [],  # 各指标下界
-        'revenue per hour lb': [],
-        'agv utility lb': [],
-        'total net revenue lb': [],
-        'revenue lb': [],
-        'AGV cost lb': [],
-        'charging cost lb': [],
-        'worker cost lb': []
-        }
-summary = pd.DataFrame(data,)
+data = {
+    "AGV num": [],
+    "order num": [],
+    "time step": [],  # 效率指标
+    "revenue per hour": [],  # 利润指标
+    "agv utility": [],  # 利用率指标
+    "total net revenue": [],
+    "revenue": [],
+    "AGV cost": [],
+    "charging cost": [],
+    "worker cost": [],
+    "time step ub": [],  # 各指标上界
+    "revenue per hour ub": [],
+    "agv utility ub": [],
+    "total net revenue ub": [],
+    "revenue ub": [],
+    "AGV cost ub": [],
+    "charging cost ub": [],
+    "worker cost ub": [],
+    "time step lb": [],  # 各指标下界
+    "revenue per hour lb": [],
+    "agv utility lb": [],
+    "total net revenue lb": [],
+    "revenue lb": [],
+    "AGV cost lb": [],
+    "charging cost lb": [],
+    "worker cost lb": [],
+}
+summary = pd.DataFrame(
+    data,
+)
 
 # 注释部分为数值实验
 # ORDER_NUM = 7  # 订单数量
@@ -55,11 +58,20 @@ summary = pd.DataFrame(data,)
 #     summary.loc[i] = np.concatenate((mean, upper_bound, lower_bound)).round(4)
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     ORDER_NUM = 1  # 订单数量
     order_list = generate_orders(seed=100, numOfOrders=ORDER_NUM)  # 生成订单
     for order in order_list:
         order.show()
 
     # 测试仿真使用该函数
-    simulation(seed=100, AGV_NUM=12, ORDER_NUM=ORDER_NUM, order_list=order_list, interval=200, show=True, save_fig=False, heat_map=False)
+    simulation(
+        seed=100,
+        AGV_NUM=12,
+        ORDER_NUM=ORDER_NUM,
+        order_list=order_list,
+        interval=200,
+        show=True,
+        save_fig=False,
+        heat_map=False,
+    )

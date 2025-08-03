@@ -1,8 +1,16 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
-df = pd.read_excel('maps//map1(3table).xlsx').fillna(0)
-MAP = df.iloc[0:-1, 1: -1].values
+root_path = Path(__file__).parent.parent
+map_name = "map1(3table).xlsx"
+map_path = root_path / "maps" / map_name
+if not map_path.exists():
+    raise FileNotFoundError(f"Map file {map_name} not found in {root_path / 'maps'}.")
+df = pd.read_excel(map_path).fillna(0)
+
+
+MAP = df.iloc[0:-1, 1:-1].values
 SHELF_COORD = []
 TABLE_COORD = []
 CHARGING_STATION_COORD = []
@@ -18,6 +26,7 @@ SHELF_NUM = len(SHELF_COORD)
 TABLE_NUM = len(TABLE_COORD)
 CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
 
+
 class Order:
     def __init__(self, id, shelf, shelf_status):
         """
@@ -29,11 +38,20 @@ class Order:
         self.shelf = shelf
         self.shelf_status = shelf_status
         self.table = None
+
     def show(self):
         """
         print订单信息
         """
-        print('shelf = ', self.shelf, ', shelf_status = ', self.shelf_status, ', table = ', self.table)
+        print(
+            "shelf = ",
+            self.shelf,
+            ", shelf_status = ",
+            self.shelf_status,
+            ", table = ",
+            self.table,
+        )
+
 
 def generate_orders(seed, numOfOrders=int(np.random.normal(50, 5, 1)[0])):
     """
@@ -46,7 +64,7 @@ def generate_orders(seed, numOfOrders=int(np.random.normal(50, 5, 1)[0])):
     for i in range(numOfOrders):
         numOfShelves = np.random.randint(1, 5)  # 假设每单涉及的货架数量服从1到4的均匀分布
         shelf = np.random.choice(SHELF_NUM, numOfShelves, replace=False)
-        shelf_status = ['todo'] * numOfShelves
+        shelf_status = ["todo"] * numOfShelves
         order.append(Order(i, shelf, shelf_status))
     return order
 
@@ -74,76 +92,124 @@ def orderDistribute(order, vehicle, all_shelf_status, table_list):
     """
     for i in range(len(order.shelf)):
         # 如果该货架尚未被分配且仍然在原位（没有被其它AGV运走）
-        if order.shelf_status[i] == 'todo' and all_shelf_status[order.shelf[i]] == 1:
+        if order.shelf_status[i] == "todo" and all_shelf_status[order.shelf[i]] == 1:
             distance = 10000  # 该货架距离AGV的最近距离
-            min_index = len(vehicle)   # 距离该货架最近的AGV的id
+            min_index = len(vehicle)  # 距离该货架最近的AGV的id
             for j in range(len(vehicle)):
                 # 如果该AGV空闲
-                if vehicle[j].status == 'available':
+                if vehicle[j].status == "available":
                     # AGV与货架之间的曼哈顿距离
                     temp = abs(SHELF_COORD[order.shelf[i]][0] - vehicle[j].x) + abs(
-                        SHELF_COORD[order.shelf[i]][1] - vehicle[j].y)
+                        SHELF_COORD[order.shelf[i]][1] - vehicle[j].y
+                    )
                     if temp < distance:
                         distance = temp
                         min_index = j
             # 如果该货架被分配给了某AGV
             if distance < 10000:
-                if vehicle[min_index].orders and SHELF_COORD[vehicle[min_index].orders[-1]['shelf_id']] == SHELF_COORD[order.shelf[i]] and vehicle[min_index].color_list[-1] == 'y':  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
+                if (
+                    vehicle[min_index].orders
+                    and SHELF_COORD[vehicle[min_index].orders[-1]["shelf_id"]]
+                    == SHELF_COORD[order.shelf[i]]
+                    and vehicle[min_index].color_list[-1] == "y"
+                ):  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
                     available_tables = []
                     for table in table_list:
                         if order.table == None:
-                            if not table['occupied']:
+                            if not table["occupied"]:
                                 available_tables.append(table)
                         else:
-                            if order.table == table['table_id'] and not table['occupied']:
+                            if order.table == table["table_id"] and not table["occupied"]:
                                 available_tables.append(table)
                     if available_tables:
                         target = available_tables[0]
                         for table in available_tables:
-                            if abs(vehicle[min_index].x - table['loc'][0]) + abs(vehicle[min_index].y - table['loc'][1]) < abs(
-                                    vehicle[min_index].x - target['loc'][0]) + abs(vehicle[min_index].y - target['loc'][1]):
+                            if abs(vehicle[min_index].x - table["loc"][0]) + abs(
+                                vehicle[min_index].y - table["loc"][1]
+                            ) < abs(vehicle[min_index].x - target["loc"][0]) + abs(
+                                vehicle[min_index].y - target["loc"][1]
+                            ):
                                 target = table
-                        tsort = int(np.random.normal(10, 2, 1)[0])  # 分拣时间服从均值为10，标准差为2的正态分布
+                        tsort = int(
+                            np.random.normal(10, 2, 1)[0]
+                        )  # 分拣时间服从均值为10，标准差为2的正态分布
                         vehicle[min_index].orders.append(
-                            {'order_id': order.id,
-                             'sub_order_id': i,
-                             'shelf_id': order.shelf[i],
-                             'table_id': target['table_id'],
-                             'table_position': target['loc'],
-                             'table_position_id': target['id'],
-                             'shift': target['shift'],
-                             'tsort': tsort})
-                        print('car %d assigned shelf %d again at (%d, %d) and table %d at (%d, %d)' % (
-                            min_index, order.shelf[i], SHELF_COORD[order.shelf[i]][0], SHELF_COORD[order.shelf[i]][1],
-                            target['table_id'], target['loc'][0], target['loc'][1]))
-                        order.table = target['table_id']
-                        table_list[target['id']]['occupied'] = True
-                        vehicle[min_index].status = 'to select'
-                        order.shelf_status[i] = 'doing'
+                            {
+                                "order_id": order.id,
+                                "sub_order_id": i,
+                                "shelf_id": order.shelf[i],
+                                "table_id": target["table_id"],
+                                "table_position": target["loc"],
+                                "table_position_id": target["id"],
+                                "shift": target["shift"],
+                                "tsort": tsort,
+                            }
+                        )
+                        print(
+                            "car %d assigned shelf %d again at (%d, %d) and table %d at (%d, %d)"
+                            % (
+                                min_index,
+                                order.shelf[i],
+                                SHELF_COORD[order.shelf[i]][0],
+                                SHELF_COORD[order.shelf[i]][1],
+                                target["table_id"],
+                                target["loc"][0],
+                                target["loc"][1],
+                            )
+                        )
+                        order.table = target["table_id"]
+                        table_list[target["id"]]["occupied"] = True
+                        vehicle[min_index].status = "to select"
+                        order.shelf_status[i] = "doing"
                         all_shelf_status[order.shelf[i]] = 0  # 更新该货架状态
-                        print('car %d going for table %d at position (%d,%d)' % (vehicle[min_index].id, vehicle[min_index].orders[-1]['table_id'],
-                                                                                 vehicle[min_index].orders[-1]['table_position'][0],
-                                                                                 vehicle[min_index].orders[-1]['table_position'][1]))
+                        print(
+                            "car %d going for table %d at position (%d,%d)"
+                            % (
+                                vehicle[min_index].id,
+                                vehicle[min_index].orders[-1]["table_id"],
+                                vehicle[min_index].orders[-1]["table_position"][0],
+                                vehicle[min_index].orders[-1]["table_position"][1],
+                            )
+                        )
                     else:
-                        print('car %d assigned shelf %d again at (%d, %d)' % (
-                            min_index, order.shelf[i], SHELF_COORD[order.shelf[i]][0], SHELF_COORD[order.shelf[i]][1]))
-                        vehicle[min_index].status = 'waiting to select'
-                        all_shelf_status[vehicle[min_index].orders[-1]['shelf_id']] = 0
+                        print(
+                            "car %d assigned shelf %d again at (%d, %d)"
+                            % (
+                                min_index,
+                                order.shelf[i],
+                                SHELF_COORD[order.shelf[i]][0],
+                                SHELF_COORD[order.shelf[i]][1],
+                            )
+                        )
+                        vehicle[min_index].status = "waiting to select"
+                        all_shelf_status[vehicle[min_index].orders[-1]["shelf_id"]] = 0
                         vehicle[min_index].point = len(vehicle[min_index].path) - 1
-                        print('car %d waiting to select' % vehicle[min_index].id)
+                        print("car %d waiting to select" % vehicle[min_index].id)
                 else:
-                    vehicle[min_index].status = 'to shelf'
-                    tsort = int(np.random.normal(10, 2, 1)[0])  # 分拣时间服从均值为10，标准差为2的正态分布
+                    vehicle[min_index].status = "to shelf"
+                    tsort = int(
+                        np.random.normal(10, 2, 1)[0]
+                    )  # 分拣时间服从均值为10，标准差为2的正态分布
                     vehicle[min_index].orders.append(
-                        {'order_id': order.id,
-                         'sub_order_id': i,
-                         'shelf_id': order.shelf[i],
-                         'table_id': None,
-                         'table_position': None,
-                         'table_position_id': None,
-                         'shift': None,
-                         'tsort': tsort})
-                    print('car %d assigned shelf %d at (%d, %d)' % (
-                    min_index, order.shelf[i], SHELF_COORD[order.shelf[i]][0], SHELF_COORD[order.shelf[i]][1]))
-                    order.shelf_status[i] = 'doing'
+                        {
+                            "order_id": order.id,
+                            "sub_order_id": i,
+                            "shelf_id": order.shelf[i],
+                            "table_id": None,
+                            "table_position": None,
+                            "table_position_id": None,
+                            "shift": None,
+                            "tsort": tsort,
+                        }
+                    )
+                    print(
+                        "car %d assigned shelf %d at (%d, %d)"
+                        % (
+                            min_index,
+                            order.shelf[i],
+                            SHELF_COORD[order.shelf[i]][0],
+                            SHELF_COORD[order.shelf[i]][1],
+                        )
+                    )
+                    order.shelf_status[i] = "doing"
                     all_shelf_status[order.shelf[i]] = 0  # 更新该货架状态

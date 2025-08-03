@@ -1,11 +1,33 @@
+import os
 from mapAndOrder import MAP
-FULL_CHARGE = 3600  # 按充10分钟跑1小时来算，满电是3600，代表可以跑大概3600秒（粗略估计，直线行驶按1秒消耗1电，转弯按1秒消耗2电）
-BATTERY_CONSUMING_SPEED = 1  # 电量消耗速度/s
+from enum import IntEnum
+
+FULL_CHARGE = int(os.getenv("FULL_CHARGE", "3600"))
+BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))
 CHARGING_SPEED = 6 * BATTERY_CONSUMING_SPEED
-class AGV:
-    def __init__(self, id, x, y, direction, battery):
+
+
+class Direction(IntEnum):
+    """
+    Enum for representing the four cardinal directions.
+    """
+
+    UP = 0
+    RIGHT = 90
+    DOWN = 180
+    LEFT = 270
+
+    def __str__(self):
         """
-        :param id: 
+        String representation of the direction.
+        """
+        return self.name.lower()
+
+
+class AGV:
+    def __init__(self, id: int, x: int, y: int, direction: Direction, battery):
+        """
+        :param id:
         :param x: int，AGV当前的x坐标（位于栅格地图的第几行）
         :param y: int，AGV当前的y坐标（位于栅格地图的第几列）
         :param direction: string，AGV当前的朝向，'up', 'down', 'right, 'down' 中的一个
@@ -42,19 +64,26 @@ class AGV:
         self.direction = direction
         self.battery = battery
         self.start = (x, y)
-        self.status = 'available'
+        self.status = "available"
         self.orders = []
         self.charge_mission = []
         self.point = 0
-        self.color = 'k'
+        self.color = "k"
         self.path = []
         self.color_list = []
         self.selecting_process = 0
+
     def move(self):
         """
         功能：移动AGV，更新其状态
         """
-        if self.point < len(self.path) - 1 and self.status not in ['waiting to charge', 'waiting at start', 'waiting to select', 'selecting', 'charging']:
+        if self.point < len(self.path) - 1 and self.status not in [
+            "waiting to charge",
+            "waiting at start",
+            "waiting to select",
+            "selecting",
+            "charging",
+        ]:
             self.point += 1
             self.x = self.path[self.point][0]
             self.y = self.path[self.point][1]
@@ -70,7 +99,18 @@ class AGV:
     def check_battery(self):
         # 检查电量是否足够
         return self.battery >= (MAP.shape[0] + MAP.shape[1]) * 6 * BATTERY_CONSUMING_SPEED
+
     def charge(self):
         self.battery += CHARGING_SPEED
         if self.battery > FULL_CHARGE:
             self.battery = FULL_CHARGE
+
+
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    print(isinstance(Direction.UP, Direction))
+    print(isinstance(Direction.UP, int))
+    print(Direction.UP + 1)
+    print("AGV module loaded successfully.")
