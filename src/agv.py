@@ -1,6 +1,10 @@
+from ast import Tuple
 import os
-from mapAndOrder import MAP
 from enum import IntEnum
+from dataclasses import dataclass
+from typing import List, Dict, Tuple, Optional
+from maps import MAP
+from tables import WorkCell
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", "3600"))
 BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))
@@ -17,11 +21,74 @@ class Direction(IntEnum):
     DOWN = 180
     LEFT = 270
 
-    def __str__(self):
-        """
-        String representation of the direction.
-        """
+    def __repr__(self):
         return self.name.lower()
+
+
+class AgvStatus(IntEnum):
+    """Enumeration for AGV operational states.
+
+    This enum defines all possible states that an AGV can be in during warehouse
+    operations, including order fulfillment, charging, and standby modes.
+
+    Attributes:
+        AVAILABLE: AGV is idle and ready for new order assignment.
+        TO_SHELF: AGV is traveling from start position to target shelf location
+            (includes lifting the shelf).
+        TO_SELECT: AGV is traveling from shelf location to target workstation
+            (includes waiting for sorting at workstation).
+        WAITING_TO_SELECT: AGV is waiting at shelf location because target
+            workstation is occupied.
+        SELECTING: AGV is at workstation waiting for order sorting/picking process.
+        RETURN_SHELF: AGV is returning shelf from workstation to original location
+            (includes placing the shelf down).
+        TO_CHARGE: AGV has completed orders and is traveling from shelf location
+            to charging station.
+        WAITING_TO_CHARGE: AGV is waiting at shelf location because all charging
+            stations are occupied.
+        CHARGING: AGV is at charging station replenishing battery.
+        BACK_TO_START: AGV is returning to start position after completing orders
+            or charging.
+        ARRIVED_AT_START: AGV has reached start position and the position is marked
+            as non-traversable for path refresh.
+        WAITING_AT_START: AGV is on standby at start position with no assigned
+            orders and sufficient battery level.
+    """
+
+    AVAILABLE = 0
+    TO_SHELF = 1
+    TO_SELECT = 2
+    WAITING_TO_SELECT = 3
+    SELECTING = 4
+    RETURN_SHELF = 5
+    TO_CHARGE = 6
+    WAITING_TO_CHARGE = 7
+    CHARGING = 8
+    BACK_TO_START = 9
+    ARRIVED_AT_START = 10
+    WAITING_AT_START = 11
+
+    def __repr__(self):
+        return self.name.lower()
+
+
+@dataclass
+class DeliveryMission:
+    """Represents a delivery mission assigned to an AGV."""
+
+    order_id: int
+    sub_order_id: int
+    shelf_id: int
+    work_cell: Optional[WorkCell] = None
+    tsort: Optional[int] = None
+
+
+@dataclass
+class ChargingMission:
+    """Represents a charging mission."""
+
+    charging_station_id: int
+    loc: Tuple[int, int]
 
 
 class AGV:
@@ -31,19 +98,7 @@ class AGV:
         :param x: int，AGV当前的x坐标（位于栅格地图的第几行）
         :param y: int，AGV当前的y坐标（位于栅格地图的第几列）
         :param direction: string，AGV当前的朝向，'up', 'down', 'right, 'down' 中的一个
-        :param status: string，AGV当前的状态
-            'available'：未指派订单
-            'to shelf': 从起点到目标货架的过程中（包括将目标货架抬起）
-            'to select': 从目标货架到目标工作台的过程中（包括在工作台处等待分拣）
-            'wait to select': 目标工作台已被占用，在货架处原地等待的过程
-            'selecting': 在工作台处等待分拣
-            'return shelf': 从目标工作台将目标货架返还的过程中（包括将目标货架放下）
-            'to charge': 完成订单后（位于某货架处）前往充电桩的过程
-            'wait to charge': 所有充电桩已被占用，在货架处原地等待的过程
-            'charging': 在充电桩处充电
-            'back to start': 订单完成后或充电完成后返回起点的过程
-            'arrived at start': 到达起点，为了刷新路径，将该起点设为不可通行
-            'waiting at start': 无订单且电量高于阈值，在起点处待机
+        :param status: AgvStatus，AGV当前的状态
         :param orders: list of dicts，订单列表，字段如下：
             'order_id': int，订单号
             'sub_order_id': int，该订单的第几个货架
@@ -61,56 +116,70 @@ class AGV:
         self.id = id
         self.x = x
         self.y = y
+        self.loc = (x, y)
         self.direction = direction
         self.battery = battery
         self.start = (x, y)
-        self.status = "available"
-        self.orders = []
-        self.charge_mission = []
+        self.status = AgvStatus.AVAILABLE
+        self.delivery_missions: List[DeliveryMission] = []
+        self.charging_missions: List[ChargingMission] = []
         self.point = 0
         self.color = "k"
-        self.path = []
+        self.path: List[Tuple[int, int, int, Direction]] = []
         self.color_list = []
         self.selecting_process = 0
 
     def move(self):
         """
-        功能：移动AGV，更新其状态
+        Move the AGV to the next point in its path.
         """
         if self.point < len(self.path) - 1 and self.status not in [
-            "waiting to charge",
-            "waiting at start",
-            "waiting to select",
-            "selecting",
-            "charging",
+            AgvStatus.WAITING_TO_CHARGE,
+            AgvStatus.WAITING_AT_START,
+            AgvStatus.WAITING_TO_SELECT,
+            AgvStatus.SELECTING,
+            AgvStatus.CHARGING,
         ]:
             self.point += 1
-            self.x = self.path[self.point][0]
-            self.y = self.path[self.point][1]
-            self.direction = self.path[self.point][3]
+            self.x, self.y, _, self.direction = self.path[self.point]
             self.color = self.color_list[self.point]
             if self.path[self.point - 1][:2] == self.path[self.point][:2]:
                 self.battery -= BATTERY_CONSUMING_SPEED * 2  # 转弯时耗电是匀速前进时的2倍
             else:
                 self.battery -= BATTERY_CONSUMING_SPEED
-        if self.battery < 0:
-            self.battery = 0
+        self.battery = max(self.battery, 0)
 
-    def check_battery(self):
-        # 检查电量是否足够
+    def check_battery(self, MAP):
+        """check if the AGV has enough battery to complete a mission"""
         return self.battery >= (MAP.shape[0] + MAP.shape[1]) * 6 * BATTERY_CONSUMING_SPEED
 
     def charge(self):
         self.battery += CHARGING_SPEED
-        if self.battery > FULL_CHARGE:
-            self.battery = FULL_CHARGE
+        self.battery = min(self.battery, FULL_CHARGE)
+
+    def __repr__(self):
+        return (
+            f"AGV(id={self.id}, loc={self.loc}, direction={self.direction}, "
+            f"battery={self.battery}, status={self.status}, "
+            f"delivery_missions={self.delivery_missions}, "
+            f"charging_missions={self.charging_missions})\n"
+        )
+
+
+def init_agvs(agv_num: int) -> List[AGV]:
+
+    vehicles = [
+        AGV(
+            id=i,
+            x=0,
+            y=(i + 1) * (MAP.shape[1] // (agv_num + 1)),
+            direction=Direction.DOWN,
+            battery=FULL_CHARGE,
+        )
+        for i in range(agv_num)
+    ]
+    return vehicles
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    print(isinstance(Direction.UP, Direction))
-    print(isinstance(Direction.UP, int))
-    print(Direction.UP + 1)
-    print("AGV module loaded successfully.")
+    pass

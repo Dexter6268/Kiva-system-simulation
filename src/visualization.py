@@ -1,13 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from mapAndOrder import (
-    SHELF_COORD,
-    TABLE_COORD,
-    CHARGING_STATION_COORD,
-    TABLE_NUM,
-    CHARGING_STATION_NUM,
-)
+from maps import MAP
 from matplotlib.animation import FuncAnimation
+
+SHELF_COORDS = MAP.shelf_coords
+TABLE_COORDS = MAP.table_coords
+CHARGING_STATION_COORD = MAP.charging_station_coords
+TABLE_NUM = len(TABLE_COORDS)
+CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
 
 
 def create_animation(
@@ -47,8 +47,8 @@ def create_animation(
     charging_station_x = []
     charging_station_y = []
     for i in range(TABLE_NUM):
-        table_x.append(TABLE_COORD[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间，更美观
-        table_y.append(TABLE_COORD[i][1] - 0.5)
+        table_x.append(TABLE_COORDS[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间，更美观
+        table_y.append(TABLE_COORDS[i][1] - 0.5)
         ax.scatter(table_y[i], table_x[i], s=80, c="white", marker=("$" + str(i) + "$"), zorder=2)
     for i in range(CHARGING_STATION_NUM):
         charging_station_x.append(
@@ -91,11 +91,11 @@ def create_animation(
         fontsize=FONT_SIZE,
     )  # 标题
     # 货架
-    x_shelf = [coord[0] - 0.5 for coord in SHELF_COORD]
-    y_shelf = [coord[1] - 0.5 for coord in SHELF_COORD]
+    x_shelf = [coord[0] - 0.5 for coord in SHELF_COORDS]
+    y_shelf = [coord[1] - 0.5 for coord in SHELF_COORDS]
     sc_shelf = ax.scatter(y_shelf, x_shelf, s=BLOCK_SIZE, c="y", marker="s", label="shelf")
     # 货架id
-    for i in range(len(SHELF_COORD)):
+    for i in range(len(SHELF_COORDS)):
         ax.text(
             y_shelf[i],
             x_shelf[i],

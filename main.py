@@ -1,11 +1,13 @@
 import sys
 import os
 import time
+import logging
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
-from mapAndOrder import generate_orders, Order
+from orders import init_orders, Order
 from simulation import simulation
 
 
@@ -49,7 +51,7 @@ summary = pd.DataFrame(
 # for i in range(AGV_start_num, AGV_end_num + 1):
 #     summary_repeat = []
 #     for repeat in range(REPEAT):
-#         order_list = generate_orders(seed=round(time.time()%1 * 100000), numOfOrders=ORDER_NUM)  # 生成订单
+#         order_list = init_orders(seed=round(time.time()%1 * 100000), numOfOrders=ORDER_NUM)  # 生成订单
 #         summary_repeat.append(simulation(seed=round(time.time()%1 * 100000), AGV_NUM=i, ORDER_NUM=ORDER_NUM, order_list=order_list))
 #     mean = np.mean(summary_repeat, axis=0)
 #     standard_error = np.sqrt(np.var(summary_repeat, axis=0) / REPEAT)
@@ -59,17 +61,22 @@ summary = pd.DataFrame(
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
 if __name__ == "__main__":
-    ORDER_NUM = 1  # 订单数量
-    order_list = generate_orders(seed=100, numOfOrders=ORDER_NUM)  # 生成订单
-    for order in order_list:
-        order.show()
+    root_dir = Path(__file__).parent
+    log_file = root_dir / "logs" / "main.log"
+    log = logging.basicConfig(
+        filename=log_file,
+        filemode="w",
+        format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+        datefmt="%Y-%m-%d-%H:%M:%S",
+        level=logging.INFO,
+    )
+    order_num = 1  # 订单数量
 
     # 测试仿真使用该函数
     simulation(
         seed=100,
-        AGV_NUM=12,
-        ORDER_NUM=ORDER_NUM,
-        order_list=order_list,
+        agv_num=12,
+        order_num=order_num,
         interval=200,
         show=True,
         save_fig=False,

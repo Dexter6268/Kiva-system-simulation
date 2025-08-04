@@ -1,0 +1,85 @@
+import os
+import logging
+import pandas as pd
+from pathlib import Path
+import numpy as np
+from typing import List, Tuple, cast
+
+
+class Map:
+    """
+    Class to represent the warehouse map.
+    The map is read from an Excel file and contains information about shelves, tables, and charging stations.
+    """
+
+    def __init__(self, value: np.ndarray):
+        self.data = value
+        self._shelf_coords = None
+        self._table_coords = None
+        self._charging_station_coords = None
+
+    def check_valid(self, x: int, y: int) -> bool:
+        """
+        Check if the coordinates (x, y) are valid within the map and not occupied.
+        """
+        return 0 <= x < self.data.shape[0] and 0 <= y < self.data.shape[1] and self.data[x, y] == 0
+
+    def __getitem__(self, key):
+        """支持 map[x, y] 或 map[x][y] 访问方式"""
+        if isinstance(key, tuple) and len(key) == 2:
+            x, y = key
+            return self.data[x, y]
+        else:
+            # 支持 map[x] 返回一行
+            return self.data[key]
+
+    def __setitem__(self, key, value):
+        """支持 map[x, y] = value 设置方式"""
+        if isinstance(key, tuple) and len(key) == 2:
+            x, y = key
+            self.data[x, y] = value
+        else:
+            # 支持 map[x] = array 设置一行
+            self.data[key] = value
+
+    @property
+    def shape(self) -> Tuple[int, int]:
+        """Return the shape of the map."""
+        return cast(Tuple[int, int], self.data.shape)
+
+    def _get_coords_by_value(self, value: int) -> List[Tuple[int, int]]:
+        return [(int(x), int(y)) for x, y in np.argwhere(self.data == value)]
+
+    @property
+    def shelf_coords(self) -> List[Tuple[int, int]]:
+        """Get coordinates of all shelves (cached)."""
+        if self._shelf_coords is None:
+            self._shelf_coords = self._get_coords_by_value(1)
+        return self._shelf_coords
+
+    @property
+    def table_coords(self) -> List[Tuple[int, int]]:
+        """Get coordinates of all tables (cached)."""
+        if self._table_coords is None:
+            self._table_coords = self._get_coords_by_value(2)
+        return self._table_coords
+
+    @property
+    def charging_station_coords(self) -> List[Tuple[int, int]]:
+        """Get coordinates of all charging stations (cached)."""
+        if self._charging_station_coords is None:
+            self._charging_station_coords = self._get_coords_by_value(3)
+        return self._charging_station_coords
+
+
+root_path = Path(__file__).parent.parent
+map_name = os.environ.get("MAP_NAME", "map0.xlsx")
+map_path = root_path / "maps" / map_name
+if not map_path.exists():
+    raise FileNotFoundError(f"Map file {map_name} not found in {root_path / 'maps'}.")
+df = pd.read_excel(map_path).fillna(0)
+MAP = Map(df.iloc[0:-1, 1:-1].values)
+
+if __name__ == "__main__":
+    a = np.array([[1, 2, 3], [4, 5, 6]])
+    print(type(a.shape))

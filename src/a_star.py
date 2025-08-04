@@ -288,7 +288,7 @@ def astar(
             continue
         closed_list.add((cur.x, cur.y, cur.t))
 
-        rows, cols = len(mapdata), len(mapdata[0])
+        rows, cols = mapdata.shape
         # Generate movement neighbors
         for dx, dy, new_direction in movements:
             new_x, new_y = cur.x + dx, cur.y + dy
