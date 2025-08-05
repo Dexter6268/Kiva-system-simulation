@@ -3,8 +3,8 @@ import os
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
-from maps import MAP
-from tables import WorkCell
+from kiva_sim.maps import MAP
+from kiva_sim.tables import WorkCell
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", "3600"))
 BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))

@@ -1,5 +1,5 @@
 import heapq
-from a_star import astar
+from kiva_sim.a_star import astar
 
 
 def detect_collision(path1, path2):

@@ -1,5 +1,5 @@
 from typing import List
-from maps import MAP
+from kiva_sim.maps import MAP
 
 
 class WorkCell:

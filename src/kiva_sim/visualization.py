@@ -1,7 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from maps import MAP
+import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from kiva_sim.maps import MAP
 
 SHELF_COORDS = MAP.shelf_coords
 TABLE_COORDS = MAP.table_coords

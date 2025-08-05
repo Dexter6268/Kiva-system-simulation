@@ -1,12 +1,11 @@
-from curses.ascii import TAB
-from mimetypes import init
 import os
 import time
 import logging
 import numpy as np
 import seaborn as sns
+from copy import deepcopy
 import matplotlib.pyplot as plt
-from agv import AGV, AgvStatus, Direction, init_agvs, ChargingMission
+from agv import AGV, AgvStatus, init_agvs, ChargingMission
 from cbs import cbs_reserve
 from visualization import create_animation
 from orders import (
@@ -19,9 +18,9 @@ from orders import (
     manhattan_distance,
 )
 
-from maps import Map, MAP
-from tables import init_tables
-from copy import deepcopy
+from kiva_sim.maps import Map, MAP
+from kiva_sim.tables import init_tables
+
 
 SHELF_COORDS = MAP.shelf_coords
 TABLE_COORDS = MAP.table_coords

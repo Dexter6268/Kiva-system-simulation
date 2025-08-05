@@ -6,7 +6,7 @@ from pathlib import Path
 from numpy import ndarray
 from collections import defaultdict
 from typing import List, Dict, Tuple, Optional
-from agv import Direction
+from kiva_sim.agv import Direction
 
 
 # Load environment variables from .env file

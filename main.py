@@ -6,42 +6,42 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "src"))
-from orders import init_orders, Order
-from simulation import simulation
+# sys.path.append(os.path.join(os.path.dirname(__file__), "src", "kiva_sim"))
+from kiva_sim.orders import init_orders, Order
+from kiva_sim.simulation import simulation
 
 
-data = {
-    "AGV num": [],
-    "order num": [],
-    "time step": [],  # 效率指标
-    "revenue per hour": [],  # 利润指标
-    "agv utility": [],  # 利用率指标
-    "total net revenue": [],
-    "revenue": [],
-    "AGV cost": [],
-    "charging cost": [],
-    "worker cost": [],
-    "time step ub": [],  # 各指标上界
-    "revenue per hour ub": [],
-    "agv utility ub": [],
-    "total net revenue ub": [],
-    "revenue ub": [],
-    "AGV cost ub": [],
-    "charging cost ub": [],
-    "worker cost ub": [],
-    "time step lb": [],  # 各指标下界
-    "revenue per hour lb": [],
-    "agv utility lb": [],
-    "total net revenue lb": [],
-    "revenue lb": [],
-    "AGV cost lb": [],
-    "charging cost lb": [],
-    "worker cost lb": [],
-}
-summary = pd.DataFrame(
-    data,
-)
+# data = {
+#     "AGV num": [],
+#     "order num": [],
+#     "time step": [],  # 效率指标
+#     "revenue per hour": [],  # 利润指标
+#     "agv utility": [],  # 利用率指标
+#     "total net revenue": [],
+#     "revenue": [],
+#     "AGV cost": [],
+#     "charging cost": [],
+#     "worker cost": [],
+#     "time step ub": [],  # 各指标上界
+#     "revenue per hour ub": [],
+#     "agv utility ub": [],
+#     "total net revenue ub": [],
+#     "revenue ub": [],
+#     "AGV cost ub": [],
+#     "charging cost ub": [],
+#     "worker cost ub": [],
+#     "time step lb": [],  # 各指标下界
+#     "revenue per hour lb": [],
+#     "agv utility lb": [],
+#     "total net revenue lb": [],
+#     "revenue lb": [],
+#     "AGV cost lb": [],
+#     "charging cost lb": [],
+#     "worker cost lb": [],
+# }
+# summary = pd.DataFrame(
+#     data,
+# )
 
 # 注释部分为数值实验
 # ORDER_NUM = 7  # 订单数量
@@ -61,24 +61,27 @@ summary = pd.DataFrame(
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
 if __name__ == "__main__":
-    root_dir = Path(__file__).parent
-    log_file = root_dir / "logs" / "main.log"
-    log = logging.basicConfig(
-        filename=log_file,
-        filemode="w",
-        format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
-        datefmt="%Y-%m-%d-%H:%M:%S",
-        level=logging.INFO,
-    )
-    order_num = 1  # 订单数量
+    # root_dir = Path(__file__).parent
+    # log_file = root_dir / "logs" / "main.log"
+    # log = logging.basicConfig(
+    #     filename=log_file,
+    #     filemode="w",
+    #     format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+    #     datefmt="%Y-%m-%d-%H:%M:%S",
+    #     level=logging.INFO,
+    # )
+    # order_num = 1  # 订单数量
 
     # 测试仿真使用该函数
-    simulation(
-        seed=100,
-        agv_num=12,
-        order_num=order_num,
-        interval=200,
-        show=True,
-        save_fig=False,
-        heat_map=False,
-    )
+    # simulation(
+    #     seed=100,
+    #     agv_num=12,
+    #     order_num=order_num,
+    #     interval=200,
+    #     show=True,
+    #     save_fig=False,
+    #     heat_map=False,
+    # )
+    print("Please run the simulation script directly to execute the simulation.")
+    print(os.path.dirname(__file__))
+    print(sys.path)

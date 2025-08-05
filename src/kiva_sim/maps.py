@@ -72,7 +72,7 @@ class Map:
         return self._charging_station_coords
 
 
-root_path = Path(__file__).parent.parent
+root_path = Path(__file__).parent
 map_name = os.environ.get("MAP_NAME", "map0.xlsx")
 map_path = root_path / "maps" / map_name
 if not map_path.exists():

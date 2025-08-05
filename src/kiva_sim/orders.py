@@ -4,9 +4,9 @@ import numpy as np
 from enum import IntEnum
 from pathlib import Path
 from typing import List, Tuple, Optional
-from maps import MAP
-from agv import AGV, AgvStatus, DeliveryMission
-from tables import Table
+from kiva_sim.maps import MAP
+from kiva_sim.tables import Table
+from kiva_sim.agv import AGV, AgvStatus, DeliveryMission
 
 root_path = Path(__file__).parent.parent
 
