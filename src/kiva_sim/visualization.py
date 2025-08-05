@@ -51,9 +51,7 @@ def create_animation(
         table_y.append(TABLE_COORDS[i][1] - 0.5)
         ax.scatter(table_y[i], table_x[i], s=80, c="white", marker=("$" + str(i) + "$"), zorder=2)
     for i in range(CHARGING_STATION_NUM):
-        charging_station_x.append(
-            CHARGING_STATION_COORD[i][0] - 0.5
-        )  # 减去0.5是为了将散点显示在栅格中间，更美观
+        charging_station_x.append(CHARGING_STATION_COORD[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间，更美观
         charging_station_y.append(CHARGING_STATION_COORD[i][1] - 0.5)
         ax.scatter(
             charging_station_y[i],
@@ -86,10 +84,9 @@ def create_animation(
     t = len(simInfo)
     agv_num = len(simInfo[0]["AGVInfo"])
     ax.set_title(
-        "%d orders completed with %d agvs with %d seconds"
-        % (order_num, agv_num, order_complete_time),
+        f"{order_num} orders completed with {agv_num} agvs with {order_complete_time} seconds",
         fontsize=FONT_SIZE,
-    )  # 标题
+    )
     # 货架
     x_shelf = [coord[0] - 0.5 for coord in SHELF_COORDS]
     y_shelf = [coord[1] - 0.5 for coord in SHELF_COORDS]
@@ -110,9 +107,7 @@ def create_animation(
     # AGV本体
     x_init = [row["x"] - 0.5 for row in simInfo[0]["AGVInfo"]]
     y_init = [row["y"] - 0.5 for row in simInfo[0]["AGVInfo"]]
-    sc_position = ax.scatter(
-        y_init, x_init, s=BLOCK_SIZE, c="k", marker="s", label="AGV", zorder=3
-    )
+    sc_position = ax.scatter(y_init, x_init, s=BLOCK_SIZE, c="k", marker="s", label="AGV", zorder=3)
     # AGV方向标识
     x_direction_init = [row["x"] - 0.5 + 0.2 for row in simInfo[0]["AGVInfo"]]
     sc_direction = ax.scatter(y_init, x_direction_init, s=80, c="r", marker="s", zorder=4)
@@ -154,41 +149,32 @@ def create_animation(
         fontsize=FONT_SIZE,
         fontweight="bold",
     )
-    text = ""
-    for i in range(agv_num):
-        text += "%d" % i + (6 - len("%d" % i)) * " " + simInfo[0]["AGVInfo"][i]["status"] + "\n"
+    lines = (f"{str(i).ljust(6)}{simInfo[0]['AGVInfo'][i]['status']}" for i in range(agv_num))
+    text = "\n".join(lines) + "\n"
     status = ax.text(-8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
 
     # AGV目标
-    text = ""
-    for i in range(agv_num):
-        text += simInfo[0]["AGVInfo"][i]["target"] + "\n"
+    lines = (f"{simInfo[0]['AGVInfo'][i]['target']}" for i in range(agv_num))
+    text = "\n".join(lines) + "\n"
     target = ax.text(-4, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 电量
-    charge_head = ax.text(
-        47.2, 4, "AGV info\nid battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
-    )
-    text = ""
-    for i in range(agv_num):
-        text += "%d" % i + (5 - len("%d" % i)) * " " + simInfo[0]["AGVInfo"][i]["battery"] + "\n"
+    charge_head = ax.text(47.2, 4, "AGV info\nid battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
+    lines = (f"{str(i).ljust(5)}{simInfo[0]['AGVInfo'][i]['battery']}" for i in range(agv_num))
+    text = "\n".join(lines) + "\n"
     battery = ax.text(map_grid.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 订单完成数量
-    order_complete = ax.text(
+    orders_completed = ax.text(
         map_grid.shape[1] - 0.8,
         3,
-        "order completed: %d / %d" % (simInfo[0]["order_complete"], order_num),
+        f"order completed: {simInfo[0]["orders_completed"]} / {order_num}",
         ha="left",
         va="top",
         fontsize=FONT_SIZE,
         fontweight="bold",
     )
     # 成本
-    cost_head = ax.text(
-        -8, -1, "revenue and cost", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
-    )
-    text_cost = (
-        "revenue: 0\ncost_agv: 0\ncost_charging_station: 0\ncost_workers: 0\ntotal net revenue: 0"
-    )
+    cost_head = ax.text(-8, -1, "revenue and cost", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
+    text_cost = "revenue: 0\ncost_agv: 0\ncost_charging_station: 0\ncost_workers: 0\ntotal net revenue: 0"
     cost = ax.text(-8, 0, text_cost, ha="left", va="top", fontsize=FONT_SIZE)
 
     # -------------------------------------------------------------------------------------------------------
@@ -200,24 +186,19 @@ def create_animation(
         # 更新时间步信息
         timestep.set_text("time step: " + str(t))
         # 更新AGV状态信息
-        text = ""
-        for i in range(agv_num):
-            text += "%d" % i + (6 - len("%d" % i)) * " " + simInfo["AGVInfo"][i]["status"] + "\n"
+        lines = (f"{str(i).ljust(6)}{simInfo['AGVInfo'][i]['status']}" for i in range(agv_num))
+        text = "\n".join(lines) + "\n"
         status.set_text(text)
-        text = ""
-        for i in range(agv_num):
-            text += "%d" % i + (5 - len("%d" % i)) * " " + simInfo["AGVInfo"][i]["battery"] + "\n"
+        lines = (f"{str(i).ljust(5)}{simInfo['AGVInfo'][i]['battery']}" for i in range(agv_num))
+        text = "\n".join(lines) + "\n"
         battery.set_text(text)
         # 更新AGV目标
-        text = ""
-        for i in range(agv_num):
-            text += simInfo["AGVInfo"][i]["target"] + "\n"
+        lines = (f"{simInfo['AGVInfo'][i]['target']}" for i in range(agv_num))
+        text = "\n".join(lines) + "\n"
         target.set_text(text)
 
         # 更新订单完成数量
-        order_complete.set_text(
-            "order completed: %d / %d" % (simInfo["order_complete"], order_num)
-        )
+        orders_completed.set_text(f"order completed: {simInfo["orders_completed"]} / {order_num}")
 
         # 更新成本信息
         total_net_revenue = (
@@ -225,15 +206,12 @@ def create_animation(
             - (cost_agv * agv_num + cost_charging_station * CHARGING_STATION_NUM) * t
             - cost_worker * table_num * min(t, order_complete_time)
         )
-        text_cost = (
-            "revenue: %.1f\ncost_agv: %.2f\ncost_charging_station: %.2f\ncost_workers: %.1f\ntotal net revenue: %.1f"
-            % (
-                simInfo["revenue"] * 0.5,
-                cost_agv * agv_num * t,
-                cost_charging_station * CHARGING_STATION_NUM * t,
-                cost_worker * table_num * min(t, order_complete_time),
-                total_net_revenue,
-            )
+        text_cost = "revenue: {revenue:.1f}\ncost_agv: {cost_agv:.2f}\ncost_charging_station: {cost_charging_station:.2f}\ncost_workers: {cost_workers:.1f}\ntotal net revenue: {total_net_revenue:.1f}".format(
+            revenue=simInfo["revenue"] * 0.5,
+            cost_agv=cost_agv * agv_num * t,
+            cost_charging_station=cost_charging_station * CHARGING_STATION_NUM * t,
+            cost_workers=cost_worker * table_num * min(t, order_complete_time),
+            total_net_revenue=total_net_revenue,
         )
         cost.set_text(text_cost)
 

@@ -5,10 +5,10 @@ import numpy as np
 import seaborn as sns
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from agv import AGV, AgvStatus, init_agvs, ChargingMission
-from cbs import cbs_reserve
-from visualization import create_animation
-from orders import (
+from kiva_sim.agv import AGV, AgvStatus, init_agvs, ChargingMission
+from kiva_sim.cbs import cbs_reserve
+from kiva_sim.visualization import create_animation
+from kiva_sim.orders import (
     MAP,
     TABLE_COORDS,
     ShelfStatus,
@@ -31,9 +31,7 @@ CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", 3600))
 LIFTING_TIME = int(os.getenv("LIFTING_TIME", 4))  # AGV抬起及放下货架时长
-AGV_COST = float(
-    os.getenv("AGV_COST", 75000 * 1.05 / 5 / 365 / 24 / 3600)
-)  # 每辆AGV的购入及维护成本
+AGV_COST = float(os.getenv("AGV_COST", 75000 * 1.05 / 5 / 365 / 24 / 3600))  # 每辆AGV的购入及维护成本
 CHARGING_STATION_COST = float(os.getenv("CHARGING_STATION_COST", 20000 / 5 / 365 / 24 / 3600))
 WORKER_COST = float(os.getenv("WORKER_COST", 34 / 3600))  # 分拣工人每秒薪资
 
@@ -47,17 +45,14 @@ def init_simu(agv_num, order_num):
     vehicles = init_agvs(agv_num)
     shelves = [Shelf(i) for i in range(SHELF_NUM)]
     charging_stations = [
-        {"id": i, "loc": CHARGING_STATION_COORD[i], "occupied": False}
-        for i in range(CHARGING_STATION_NUM)
+        {"id": i, "loc": CHARGING_STATION_COORD[i], "occupied": False} for i in range(CHARGING_STATION_NUM)
     ]
 
     orders = init_orders(shelves=shelves, order_num=order_num)
     return AGV_MAP, tables, vehicles, shelves, charging_stations, orders
 
 
-def go_to_charge(
-    vehicle: AGV, shelf: Shelf, available_stations: list[dict], charging_stations: list[dict]
-) -> None:
+def go_to_charge(vehicle: AGV, shelf: Shelf, available_stations: list[dict], charging_stations: list[dict]) -> None:
 
     shelf.inplace = True
     vehicle.status = AgvStatus.TO_CHARGE
@@ -103,11 +98,14 @@ def simulation(
     t = 0  # 时间步
     simInfo = []  # 仿真信息，用来实现可视化
     time_start = time.time()  # 主循环开始运行时间
-    order_complete_time = float("inf")
+    orders_completed_time = float("inf")
     tbreak = -1
+    maxiter = 500
+    iteration = 0
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while True:
+    while iteration < maxiter:
+        iteration += 1
         AGVInfo = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
         for order in orders:
@@ -127,9 +125,7 @@ def simulation(
             ):
                 logging.info("vehicle %d triggered renewing" % vehicle.id)
                 cons = []  # 约束
-                staying_vehicles = (
-                    []
-                )  # 发生路径更新时已经抵达目标点的AGV（在抬起或放下货架，或在工作台处分拣）
+                staying_vehicles = []  # 发生路径更新时已经抵达目标点的AGV（在抬起或放下货架，或在工作台处分拣）
                 moving_vehicles = []  # 发生路径更新时未抵达目标点的AGV
                 moving_vehicle_id = 0
                 maps = []
@@ -137,15 +133,10 @@ def simulation(
                 ends = []
                 root_paths = {}
                 directions = []
-                arrived_at_start = any(
-                    vehicle.status == AgvStatus.ARRIVED_AT_START for vehicle in vehicles
-                )
+                arrived_at_start = any(vehicle.status == AgvStatus.ARRIVED_AT_START for vehicle in vehicles)
                 for vehicle in vehicles:
                     # 如果AGV处于to shelf（从起点至目标货架）或return shelf（从工作台处送还货架）
-                    if (
-                        vehicle.status == AgvStatus.TO_SHELF
-                        or vehicle.status == AgvStatus.RETURN_SHELF
-                    ):
+                    if vehicle.status == AgvStatus.TO_SHELF or vehicle.status == AgvStatus.RETURN_SHELF:
                         # 如果更新路径时该AGV已经运行至目标货架处（正在抬起或放下货架）
                         if shelves[vehicle.delivery_missions[-1].shelf_id].loc == vehicle.loc:
                             staying_vehicles.append(vehicle.id)
@@ -191,9 +182,7 @@ def simulation(
                             moving_vehicles.append(vehicle.id)
                             moving_vehicle_id += 1
                     elif vehicle.status == AgvStatus.TO_CHARGE:
-                        if len(vehicle.charging_missions) > 0 and vehicle.charging_missions[
-                            -1
-                        ].loc == (
+                        if len(vehicle.charging_missions) > 0 and vehicle.charging_missions[-1].loc == (
                             vehicle.x,
                             vehicle.y,
                         ):
@@ -201,16 +190,12 @@ def simulation(
                         else:
                             grid = deepcopy(AGV_MAP)
                             # 将目标充电桩处设为可通行
-                            grid[vehicle.charging_missions[-1].loc[0]][
-                                vehicle.charging_missions[-1].loc[1]
-                            ] = 0
+                            grid[vehicle.charging_missions[-1].loc[0]][vehicle.charging_missions[-1].loc[1]] = 0
                             starts.append((vehicle.x, vehicle.y))
                             ends.append(vehicle.charging_missions[-1].loc)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
-                            grid[vehicle.charging_missions[-1].loc[0]][
-                                vehicle.charging_missions[-1].loc[1]
-                            ] = 0
+                            grid[vehicle.charging_missions[-1].loc[0]][vehicle.charging_missions[-1].loc[1]] = 0
                             maps.append(grid)
                             directions.append(vehicle.direction)
                             moving_vehicles.append(vehicle.id)
@@ -231,13 +216,13 @@ def simulation(
                     elif vehicle.status == AgvStatus.ARRIVED_AT_START:
                         staying_vehicles.append(vehicle.id)
                         vehicle.status = AgvStatus.WAITING_AT_START
-                        logging.info("vehicle %d waiting at start" % vehicle.id)
-                logging.info("staying_vehicles: ", staying_vehicles)
-                logging.info("moving_vehicles: ", moving_vehicles)
-                logging.info("starts: ", starts)
-                logging.info("ends: ", ends)
-                logging.info("directions: ", directions)
-                logging.info("cbs starts searching")
+                        logging.info(f"vehicle {vehicle.id} waiting at start")
+                logging.info(f"staying_vehicles: {staying_vehicles}")
+                logging.info(f"moving_vehicles: {moving_vehicles}")
+                logging.info(f"starts: {starts}")
+                logging.info(f"ends: {ends}")
+                logging.info(f"directions: {directions}")
+                logging.info(f"cbs starts searching")
                 if starts:
                     # 用cbs算法为所有moving vehicles生成无冲突路径
                     paths = cbs_reserve(
@@ -275,10 +260,11 @@ def simulation(
         for vehicle in vehicles:
             # 录入AGV信息
             target = "None"
-            last_delivery_mission = vehicle.delivery_missions[-1]
             if vehicle.status in [AgvStatus.TO_SHELF, AgvStatus.RETURN_SHELF]:
+                last_delivery_mission = vehicle.delivery_missions[-1]
                 target = f"shelf {last_delivery_mission.shelf_id}"
             elif vehicle.status == AgvStatus.TO_SELECT:
+                last_delivery_mission = vehicle.delivery_missions[-1]
                 assert last_delivery_mission.work_cell is not None
                 target = f"table {last_delivery_mission.work_cell.table_id}"
             elif vehicle.status == AgvStatus.TO_CHARGE:
@@ -295,9 +281,7 @@ def simulation(
                     "target": target,
                 }
             )
-            order_left_to_assign = sum(
-                shelf.status == ShelfStatus.TODO for order in orders for shelf in order.shelves
-            )
+            order_left_to_assign = sum(shelf.status == ShelfStatus.TODO for order in orders for shelf in order.shelves)
 
             numOfBackToStart = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
 
@@ -306,15 +290,12 @@ def simulation(
                 if (vehicle.x, vehicle.y) != vehicle.start:
                     # 分批返回起点（如果当前处于返程的AGV超过总数的一半则继续等待），防止一次性返回车数过多，造成拥堵
                     if numOfBackToStart <= agv_num // 2:
-                        logging.info("vehicle %d back to start" % vehicle.id)
+                        logging.info(f"vehicle {vehicle.id} back to start")
                         vehicle.status = AgvStatus.BACK_TO_START
                 else:
                     vehicle.status = AgvStatus.WAITING_AT_START
                     AGV_MAP[vehicle.start[0]][vehicle.start[1]] = 4
-            elif (
-                vehicle.status != AgvStatus.AVAILABLE
-                and vehicle.status != AgvStatus.WAITING_AT_START
-            ):
+            elif vehicle.status != AgvStatus.AVAILABLE and vehicle.status != AgvStatus.WAITING_AT_START:
                 vehicle.move()
                 if vehicle.color == "y":
                     shelf_color = "w"
@@ -345,9 +326,7 @@ def simulation(
                                 available_workcells,
                                 key=lambda wc: manhattan_distance(vehicle.loc, wc.loc),
                             )
-                            orders[last_delivery_mission.order_id].table = (
-                                target_work_cell.table_id
-                            )
+                            orders[last_delivery_mission.order_id].table = target_work_cell.table_id
                             last_delivery_mission.work_cell = target_work_cell
 
                             target_work_cell.occupied = True
@@ -356,18 +335,12 @@ def simulation(
                             vehicle.point = 0
                         else:
                             vehicle.status = AgvStatus.WAITING_TO_SELECT
-                            logging.info(
-                                f"vehicle {vehicle.id} waiting to select at position {vehicle.loc}"
-                            )
-                    if vehicle.status == AgvStatus.TO_SELECT:
-                        logging.info(
-                            f"vehicle {vehicle.id} reached {last_delivery_mission.work_cell}"
-                        )
+                            logging.info(f"vehicle {vehicle.id} waiting to select at position {vehicle.loc}")
+                    elif vehicle.status == AgvStatus.TO_SELECT:
+                        logging.info(f"vehicle {vehicle.id} reached {last_delivery_mission.work_cell}")
                         vehicle.status = AgvStatus.SELECTING
-                        logging.info(
-                            f"vehicle {vehicle.id} start selecting at position {vehicle.loc}"
-                        )
-                    if vehicle.status == AgvStatus.RETURN_SHELF:
+                        logging.info(f"vehicle {vehicle.id} start selecting at position {vehicle.loc}")
+                    elif vehicle.status == AgvStatus.RETURN_SHELF:
                         logging.info(
                             f"vehicle {vehicle.id} reached {shelves[last_delivery_mission.shelf_id]} for the second time"
                         )
@@ -377,9 +350,7 @@ def simulation(
                             vehicle.status = AgvStatus.AVAILABLE
                             vehicle.point = 0
                         else:
-                            available_stations = [
-                                station for station in charging_stations if not station["occupied"]
-                            ]
+                            available_stations = [station for station in charging_stations if not station["occupied"]]
                             if available_stations:
                                 go_to_charge(
                                     vehicle,
@@ -391,22 +362,16 @@ def simulation(
                                 vehicle.status = AgvStatus.WAITING_TO_CHARGE
                                 logging.info(f"vehicle {vehicle.id} waiting to charge")
 
-                    if vehicle.status == AgvStatus.TO_CHARGE:
+                    elif vehicle.status == AgvStatus.TO_CHARGE:
                         vehicle.status = AgvStatus.CHARGING
-                        logging.info(
-                            f"vehicle {vehicle.id} start charging at position {vehicle.loc}"
-                        )
-                    if vehicle.status == AgvStatus.SELECTING:
+                        logging.info(f"vehicle {vehicle.id} start charging at position {vehicle.loc}")
+                    elif vehicle.status == AgvStatus.SELECTING:
                         vehicle.selecting_process += 1
                         assert isinstance(last_delivery_mission.tsort, int)
                         if vehicle.selecting_process >= last_delivery_mission.tsort:
-                            logging.info(
-                                f"vehicle {vehicle.id} finished selecting at position f{vehicle.loc}"
-                            )
+                            logging.info(f"vehicle {vehicle.id} finished selecting at position f{vehicle.loc}")
                             vehicle.status = AgvStatus.RETURN_SHELF
-                            logging.info(
-                                f"vehicle {vehicle.id} returning {shelves[last_delivery_mission.shelf_id]}"
-                            )
+                            logging.info(f"vehicle {vehicle.id} returning {shelves[last_delivery_mission.shelf_id]}")
                             revenue += last_delivery_mission.tsort  # 结算分拣收益
                             assert last_delivery_mission.work_cell is not None
                             last_delivery_mission.work_cell.occupied = False
@@ -414,20 +379,14 @@ def simulation(
                             shelves[last_delivery_mission.shelf_id].status = ShelfStatus.DONE
                             vehicle.selecting_process = 0
                             vehicle.point = 0
-                    if vehicle.status == AgvStatus.CHARGING:
+                    elif vehicle.status == AgvStatus.CHARGING:
                         vehicle.charge()
                         if vehicle.battery == FULL_CHARGE:
-                            logging.info(
-                                "vehicle %d finished charging at position (%d, %d)"
-                                % (vehicle.id, vehicle.x, vehicle.y)
-                            )
+                            logging.info(f"vehicle {vehicle.id} finished charging at position {vehicle.loc}")
                             vehicle.status = AgvStatus.AVAILABLE
-                            charging_stations[vehicle.charging_missions[-1].charging_station_id][
-                                "occupied"
-                            ] = False
+                            charging_stations[vehicle.charging_missions[-1].charging_station_id]["occupied"] = False
                             vehicle.point = 0
-                        continue
-                    if vehicle.status == AgvStatus.WAITING_TO_SELECT:
+                    elif vehicle.status == AgvStatus.WAITING_TO_SELECT:
                         available_workcells = [
                             work_cell
                             for table in tables
@@ -443,28 +402,18 @@ def simulation(
                                 available_workcells,
                                 key=lambda wc: manhattan_distance(vehicle.loc, wc.loc),
                             )
-                            orders[last_delivery_mission.order_id].table = (
-                                target_work_cell.table_id
-                            )
+                            orders[last_delivery_mission.order_id].table = target_work_cell.table_id
 
                             last_delivery_mission.work_cell = target_work_cell
                             target_work_cell.occupied = True
                             vehicle.status = AgvStatus.TO_SELECT
-                            logging.info(
-                                f"vehicle {vehicle.id} to select at {target_work_cell} %d"
-                            )
+                            logging.info(f"vehicle {vehicle.id} to select at {target_work_cell}")
                             vehicle.point = 0
                         else:
-                            logging.info(
-                                f"vehicle {vehicle.id} waiting to select at position {vehicle.loc}"
-                            )
-                    if vehicle.status == AgvStatus.WAITING_TO_CHARGE:
-                        logging.info(
-                            f"vehicle {vehicle.id} waiting to charge at position {vehicle.loc}"
-                        )
-                        available_stations = [
-                            station for station in charging_stations if not station["occupied"]
-                        ]
+                            logging.info(f"vehicle {vehicle.id} waiting to select at position {vehicle.loc}")
+                    elif vehicle.status == AgvStatus.WAITING_TO_CHARGE:
+                        logging.info(f"vehicle {vehicle.id} waiting to charge at position {vehicle.loc}")
+                        available_stations = [station for station in charging_stations if not station["occupied"]]
                         if available_stations:
                             go_to_charge(
                                 vehicle,
@@ -472,27 +421,22 @@ def simulation(
                                 available_stations,
                                 charging_stations,
                             )
-                    if vehicle.status == AgvStatus.BACK_TO_START:
+                    elif vehicle.status == AgvStatus.BACK_TO_START:
                         AGV_MAP[vehicle.start] = 4
-                        numOfIdle = sum(
-                            agv.status == AgvStatus.WAITING_AT_START for agv in vehicles
-                        )
+                        numOfIdle = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
                         if numOfIdle < agv_num - 1:
                             logging.info(f"vehicle {vehicle.id} arrived at start")
                             vehicle.status = AgvStatus.ARRIVED_AT_START
                             vehicle.point = 0
                         else:
                             vehicle.status = AgvStatus.WAITING_AT_START
-
-        order_complete = sum(
-            all(shelf.status == ShelfStatus.DONE for shelf in order.shelves) for order in orders
-        )
+        orders_completed = sum(all(shelf.status == ShelfStatus.DONE for shelf in order.shelves) for order in orders)
 
         simInfo.append(
             {
                 "AGVInfo": AGVInfo,
                 "shelfInfo": shelfInfo,
-                "order_complete": order_complete,
+                "orders_completed": orders_completed,
                 "t": t,
                 "revenue": revenue,
             }
@@ -501,12 +445,10 @@ def simulation(
         if t == tbreak:
             break
         numOfIdle = sum(vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles)
-        logging.info("order_complete: ", order_complete)
-        logging.info(
-            "====================================================================================================================="
-        )
-        if order_complete == order_num:
-            order_complete_time = min(order_complete_time, t)
+        logging.info(f"orders_completed: {orders_completed}")
+        logging.info("-" * 80)
+        if orders_completed == order_num:
+            orders_completed_time = min(orders_completed_time, t)
             if numOfIdle == agv_num:
                 tbreak = t + 1
         t += 1
@@ -517,25 +459,16 @@ def simulation(
     total_net_revenue = (
         revenue * 0.5
         - (AGV_COST * agv_num + CHARGING_STATION_COST * CHARGING_STATION_NUM) * t
-        - WORKER_COST * TABLE_NUM * order_complete_time
+        - WORKER_COST * TABLE_NUM * orders_completed_time
     )
     revenue_per_hour = total_net_revenue / t * 3600
-    logging.info("run time:", time_sum)
+    logging.info(f"run time: {time_sum}")
+    logging.info(f"{order_num} orders completed with {agv_num} agvs with {orders_completed_time} seconds")
     logging.info(
-        "%d orders completed with %d agvs with %d seconds"
-        % (order_num, agv_num, order_complete_time)
+        f"AGV_COST: {AGV_COST * agv_num * t:.2f}, CHARGING_STATION_COST: {CHARGING_STATION_COST * CHARGING_STATION_NUM * t:.2f}, WORKER_COST: {WORKER_COST * TABLE_NUM * orders_completed_time:.1f}, revenue: {revenue * 0.5:.1f}"
     )
-    logging.info(
-        "AGV_COST: %.2f, CHARGING_STATION_COST: %.2f, WORKER_COST: %.1f, revenue: %.1f"
-        % (
-            AGV_COST * agv_num * t,
-            CHARGING_STATION_COST * CHARGING_STATION_NUM * t,
-            WORKER_COST * TABLE_NUM * order_complete_time,
-            revenue * 0.5,
-        )
-    )
-    logging.info("total net revenue: %.1f" % total_net_revenue)
-    logging.info("revenue_per_hour: %.1f" % revenue_per_hour)
+    logging.info(f"total net revenue: {total_net_revenue:.1f}")
+    logging.info(f"revenue_per_hour: {revenue_per_hour:.1f}")
     heat_map_data = np.zeros(MAP.shape)  # 热力图矩阵
     utilized_time = [0] * agv_num  # 各AGV被利用的时间步数
     for info in simInfo:
@@ -550,8 +483,8 @@ def simulation(
                 utilized_time[i] += 1
     mean_utility = sum(utilized_time) / (t * agv_num)
     for i, ut in enumerate(utilized_time):
-        logging.info("vehicle %d utility %.2f%%" % (i, utilized_time[i] / t * 100))
-    logging.info("mean agv utility: %.2f%%" % (mean_utility * 100))
+        logging.info(f"vehicle {i} utility {utilized_time[i] / t:.2%}")
+    logging.info(f"mean agv utility: {mean_utility * 100:.2%}")
 
     if heat_map:
         sns.set_context({"figure.figsize": (MAP.shape[1], MAP.shape[0])})
@@ -562,7 +495,7 @@ def simulation(
             linewidths=0.3,
             cbar_kws={"shrink": 0.8},
         )
-        plt.savefig("heat_map for %d orders, %d AGVs .png" % (order_num, agv_num), dpi=300)
+        plt.savefig(f"heat_map_{order_num}_orders_{agv_num}_AGVs.png", dpi=300)
         plt.show()
 
     if show:
@@ -577,13 +510,13 @@ def simulation(
             CHARGING_STATION_COST,
             WORKER_COST,
             TABLE_NUM,
-            order_complete_time,
+            orders_completed_time,
             interval=interval,
             SAVE_GIF=save_fig,
         )
         if save_fig:
             ani.save(
-                "gifs//map1 %d orders, %d AGVs.gif" % (order_num, agv_num),
+                f"gifs/map1_{order_num}_orders_{agv_num}_AGVs.gif",
                 fps=fps,
                 writer="pillow",
             )
@@ -592,13 +525,13 @@ def simulation(
         [
             agv_num,
             order_num,
-            order_complete_time,  # 订单完成时间
+            orders_completed_time,  # 订单完成时间
             revenue_per_hour,  # 每小时的净收益
             mean_utility,  # AGV的利用率
             total_net_revenue,  # 总净收益
             revenue * 0.5,  # 订单完成利润
             AGV_COST * agv_num * t,  # AGV成本
             CHARGING_STATION_COST * CHARGING_STATION_NUM * t,  # 充电桩成本
-            WORKER_COST * TABLE_NUM * order_complete_time,
+            WORKER_COST * TABLE_NUM * orders_completed_time,
         ]
     )  # 工作台工人成本

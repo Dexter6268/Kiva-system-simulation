@@ -1,4 +1,3 @@
-import sys
 import os
 import time
 import logging
@@ -6,7 +5,6 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-# sys.path.append(os.path.join(os.path.dirname(__file__), "src", "kiva_sim"))
 from kiva_sim.orders import init_orders, Order
 from kiva_sim.simulation import simulation
 
@@ -61,27 +59,22 @@ from kiva_sim.simulation import simulation
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
 if __name__ == "__main__":
-    # root_dir = Path(__file__).parent
-    # log_file = root_dir / "logs" / "main.log"
-    # log = logging.basicConfig(
-    #     filename=log_file,
-    #     filemode="w",
-    #     format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
-    #     datefmt="%Y-%m-%d-%H:%M:%S",
-    #     level=logging.INFO,
-    # )
-    # order_num = 1  # 订单数量
+    log_file = Path(__file__).parent / "logs" / "main.log"
+    log = logging.basicConfig(
+        filename=log_file,
+        filemode="w",
+        format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
+        datefmt="%Y-%m-%d-%H:%M:%S",
+        level=logging.INFO,
+    )
+    order_num = 1  # 订单数量
 
-    # 测试仿真使用该函数
-    # simulation(
-    #     seed=100,
-    #     agv_num=12,
-    #     order_num=order_num,
-    #     interval=200,
-    #     show=True,
-    #     save_fig=False,
-    #     heat_map=False,
-    # )
-    print("Please run the simulation script directly to execute the simulation.")
-    print(os.path.dirname(__file__))
-    print(sys.path)
+    simulation(
+        seed=100,
+        agv_num=12,
+        order_num=order_num,
+        interval=200,
+        show=True,
+        save_fig=False,
+        heat_map=False,
+    )
