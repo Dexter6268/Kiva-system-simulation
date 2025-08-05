@@ -70,11 +70,12 @@ if __name__ == "__main__":
     order_num = 2  # 订单数量
 
     simulation(
-        seed=100,
         agv_num=12,
         order_num=order_num,
         interval=200,
         show=True,
         save_fig=False,
         heat_map=False,
+        random_seed=100,
+        astar_max_iter=2000,
     )

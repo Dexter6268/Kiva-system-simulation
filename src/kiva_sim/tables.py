@@ -37,7 +37,7 @@ def init_tables(table_num) -> List[Table]:
         work_cell_id = 0
         for dx, dy in directions:
             x, y = table.loc[0] + dx, table.loc[1] + dy
-            if MAP.check_valid(x, y):
+            if MAP.is_valid(x, y):
                 cell = WorkCell(id=work_cell_id, table_id=i, loc=(x, y))
                 table.work_cells.append(cell)
                 work_cell_id += 1

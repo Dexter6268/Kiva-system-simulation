@@ -5,13 +5,16 @@ import numpy as np
 import seaborn as sns
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from typing import List, Tuple, Dict, Optional
 from kiva_sim.states import AgvStatus, ShelfStatus
-from kiva_sim.agv import AGV, init_agvs, ChargingMission
+from kiva_sim.agv import AGV, init_agvs, ChargingMission, Shelf
 from kiva_sim.cbs import cbs_reserve
 from kiva_sim.visualization import create_animation
-from kiva_sim.maps import MAP, Shelf
-from kiva_sim.tables import init_tables
+from kiva_sim.maps import Map, MAP
+from kiva_sim.utlis import manhattan_distance
+from kiva_sim.tables import Table, init_tables
 from kiva_sim.orders import (
+    Order,
     init_orders,
     orderDistribute,
     manhattan_distance,
@@ -32,7 +35,9 @@ CHARGING_STATION_COST = float(os.getenv("CHARGING_STATION_COST", 20000 / 5 / 365
 WORKER_COST = float(os.getenv("WORKER_COST", 34 / 3600))  # 分拣工人每秒薪资
 
 
-def init_simu(agv_num, order_num):
+def init_simu(
+    agv_num: int, order_num: int
+) -> Tuple[Map, List[Table], List[AGV], List[Shelf], List[dict], List[Order]]:
     AGV_MAP = deepcopy(MAP)  # map for AGVs
     tables = init_tables(TABLE_NUM)
     for table in tables:
@@ -48,28 +53,17 @@ def init_simu(agv_num, order_num):
     return AGV_MAP, tables, vehicles, shelves, charging_stations, orders
 
 
-def go_to_charge(vehicle: AGV, shelf: Shelf, available_stations: list[dict], charging_stations: list[dict]) -> None:
-
-    shelf.inplace = True
-    vehicle.status = AgvStatus.TO_CHARGE
-    logging.info(f"vehicle {vehicle.id} to charge")
-    target = min(
-        available_stations,
-        key=lambda s: manhattan_distance(vehicle.loc, s["loc"]),
-    )
-    vehicle.charging_missions.append(ChargingMission(target["id"], target["loc"]))
-    charging_stations[target["id"]]["occupied"] = True
-    vehicle.point = 0
-
-
 def simulation(
-    seed: int,
     agv_num: int,
     order_num: int,
     interval: int = 200,
     show: bool = False,
     save_fig: bool = False,
     heat_map: bool = False,
+    astar_max_iter: int = 1500,
+    cbs_max_iter: int = 1000,
+    simu_max_iter: int = 500,
+    random_seed: Optional[int] = None,
 ):
     """
     功能：运行仿真
@@ -82,25 +76,26 @@ def simulation(
     :param heat_map: Boolean，是否生成热力图
     :return: list， 仿真信息列表
     """
-
-    np.random.seed(seed)
+    if random_seed is not None:
+        np.random.seed(random_seed)
+        logging.info(f"random seed set to {random_seed}")
 
     # 主函数 仿真+可视化
     # 初始化
     # -------------------------------------------------------------------------------------------------------
     revenue = 0  # 订单完成收益
-    maxIteration = 1500  # cbs算法迭代上限
+    # cbs算法迭代上限
     AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
     t = 0  # 时间步
     simInfo = []  # 仿真信息，用来实现可视化
-    time_start = time.time()  # 主循环开始运行时间
     orders_completed_time = float("inf")
     tbreak = -1
-    maxiter = 500
+
     iteration = 0
+    time_start = time.time()
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while iteration < maxiter:
+    while iteration < simu_max_iter:
         iteration += 1
         AGVInfo = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
@@ -125,24 +120,25 @@ def simulation(
                 moving_vehicles = []  # 发生路径更新时未抵达目标点的AGV
                 moving_vehicle_id = 0
                 maps = []
-                starts = []
+                starts: List[Tuple[int, int]] = []
                 ends = []
-                root_paths = {}
+                root_paths: Dict = {}
                 directions = []
                 arrived_at_start = any(vehicle.status == AgvStatus.ARRIVED_AT_START for vehicle in vehicles)
                 for vehicle in vehicles:
                     # 如果AGV处于to shelf（从起点至目标货架）或return shelf（从工作台处送还货架）
                     if vehicle.status == AgvStatus.TO_SHELF or vehicle.status == AgvStatus.RETURN_SHELF:
                         # 如果更新路径时该AGV已经运行至目标货架处（正在抬起或放下货架）
-                        if vehicle.delivery_missions[-1].shelf.loc == vehicle.loc:
+                        last_delivery_mission = vehicle.delivery_missions[-1]
+                        if last_delivery_mission.shelf.loc == vehicle.loc:
                             staying_vehicles.append(vehicle.id)
                         else:
                             grid = deepcopy(AGV_MAP)
                             # 将目标货架处设为可通行
-                            grid[vehicle.delivery_missions[-1].shelf.loc] = 0
+                            grid[last_delivery_mission.shelf.loc] = 0
                             maps.append(grid)
                             starts.append(vehicle.loc)
-                            ends.append(vehicle.delivery_missions[-1].shelf.loc)
+                            ends.append(last_delivery_mission.shelf.loc)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
                             directions.append(vehicle.direction)
@@ -167,7 +163,7 @@ def simulation(
                             # 将目标工作台处设为可通行
                             grid[last_delivery_mission.work_cell.loc] = 0
                             maps.append(grid)
-                            starts.append((vehicle.x, vehicle.y))
+                            starts.append(vehicle.loc)
                             ends.append(last_delivery_mission.work_cell.loc)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
@@ -185,7 +181,7 @@ def simulation(
                             grid = deepcopy(AGV_MAP)
                             # 将目标充电桩处设为可通行
                             grid[vehicle.charging_missions[-1].loc[0]][vehicle.charging_missions[-1].loc[1]] = 0
-                            starts.append((vehicle.x, vehicle.y))
+                            starts.append(vehicle.loc)
                             ends.append(vehicle.charging_missions[-1].loc)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
@@ -200,7 +196,7 @@ def simulation(
                         else:
                             grid = deepcopy(AGV_MAP)
                             maps.append(grid)
-                            starts.append((vehicle.x, vehicle.y))
+                            starts.append(vehicle.loc)
                             ends.append(vehicle.start)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
@@ -227,7 +223,8 @@ def simulation(
                         ends,
                         directions,
                         cons,
-                        maxIteration,
+                        cbs_max_iter,
+                        astar_max_iter,
                     )
                     # 将生成的路径分配给moving vehicles
                     if paths:
@@ -340,18 +337,13 @@ def simulation(
                         )
                         if vehicle.check_battery(MAP):
                             # 更新货架在位情况
-                            shelves[last_delivery_mission.shelf.id].inplace = True
+                            last_delivery_mission.shelf.inplace = True
                             vehicle.status = AgvStatus.AVAILABLE
                             vehicle.point = 0
                         else:
                             available_stations = [station for station in charging_stations if not station["occupied"]]
                             if available_stations:
-                                go_to_charge(
-                                    vehicle,
-                                    shelves[last_delivery_mission.shelf.id],
-                                    available_stations,
-                                    charging_stations,
-                                )
+                                vehicle.goto_charge(available_stations, charging_stations)
                             else:
                                 vehicle.status = AgvStatus.WAITING_TO_CHARGE
                                 logging.info(f"vehicle {vehicle.id} waiting to charge")
@@ -408,12 +400,7 @@ def simulation(
                         logging.info(f"vehicle {vehicle.id} waiting to charge at position {vehicle.loc}")
                         available_stations = [station for station in charging_stations if not station["occupied"]]
                         if available_stations:
-                            go_to_charge(
-                                vehicle,
-                                last_delivery_mission.shelf,
-                                available_stations,
-                                charging_stations,
-                            )
+                            vehicle.goto_charge(available_stations, charging_stations)
                     elif vehicle.status == AgvStatus.BACK_TO_START:
                         AGV_MAP[vehicle.start] = 4
                         numOfIdle = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
@@ -476,7 +463,7 @@ def simulation(
                 utilized_time[i] += 1
     mean_utility = sum(utilized_time) / (t * agv_num)
     for i, ut in enumerate(utilized_time):
-        logging.info(f"vehicle {i} utility {utilized_time[i] / t:.2%}")
+        logging.info(f"vehicle {i} utility {ut / t:.2%}")
     logging.info(f"mean agv utility: {mean_utility * 100:.2%}")
 
     if heat_map:

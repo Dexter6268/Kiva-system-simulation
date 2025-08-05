@@ -3,10 +3,11 @@ import logging
 import numpy as np
 from pathlib import Path
 from typing import List, Tuple, Optional
-from kiva_sim.states import ShelfStatus
-from kiva_sim.maps import MAP, Shelf
+from kiva_sim.states import ShelfStatus, AgvStatus
+from kiva_sim.maps import MAP
 from kiva_sim.tables import Table
-from kiva_sim.agv import AGV, AgvStatus, DeliveryMission
+from kiva_sim.utlis import manhattan_distance
+from kiva_sim.agv import AGV, Shelf, DeliveryMission
 
 root_path = Path(__file__).parent.parent
 
@@ -52,10 +53,6 @@ def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 
     return orders
 
 
-def manhattan_distance(coord1: Tuple[int, int], coord2: Tuple[int, int]) -> int:
-    return abs(coord1[0] - coord2[0]) + abs(coord1[1] - coord2[1])
-
-
 def find_nearest_available_vehicle(vehicles: List[AGV], shelf: Shelf) -> Optional[AGV]:
     """Find the nearest available vehicle to the given shelf."""
     available_vehicles = [v for v in vehicles if v.status == AgvStatus.AVAILABLE]
@@ -89,7 +86,7 @@ def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tab
 
             if (
                 nearest_vehicle.delivery_missions
-                and nearest_vehicle.delivery_missions[-1].shelf == shelf
+                and nearest_vehicle.delivery_missions[-1].shelf.id == shelf.id
                 and nearest_vehicle.color_list[-1] == "y"
             ):  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
                 logging.info(f"vehicle {nearest_vehicle.id} assigned to {shelf} again")
@@ -116,12 +113,10 @@ def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tab
                         work_cell=target_work_cell,
                         tsort=tsort,
                     )
-                    nearest_vehicle.delivery_missions.append(new_mission)
+                    nearest_vehicle.assign_delivery_mission(new_mission)
                     order.table = target_work_cell.table_id
                     target_work_cell.occupied = True
                     nearest_vehicle.status = AgvStatus.TO_SELECT
-                    shelf.status = ShelfStatus.DOING
-                    shelf.inplace = False
                     logging.info(f"vehicle {nearest_vehicle.id} going for {target_work_cell}")
                 else:
                     nearest_vehicle.status = AgvStatus.WAITING_TO_SELECT
@@ -139,10 +134,8 @@ def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tab
                     work_cell=None,
                     tsort=tsort,
                 )
-                nearest_vehicle.delivery_missions.append(new_mission)
+                nearest_vehicle.assign_delivery_mission(new_mission)
                 logging.info(f"vehicle {nearest_vehicle.id} assigned {shelf}")
-                shelf.status = ShelfStatus.DOING
-                shelf.inplace = False
 
 
 if __name__ == "__main__":

@@ -3,10 +3,10 @@ import os
 import heapq
 import logging
 from pathlib import Path
-from numpy import ndarray
 from collections import defaultdict
 from typing import List, Dict, Tuple, Optional
-from kiva_sim.agv import Direction
+from kiva_sim.states import Direction
+from kiva_sim.maps import Map
 
 
 # Load environment variables from .env file
@@ -62,11 +62,6 @@ class Node:
     def __repr__(self) -> str:
         """String representation of the Node."""
         return f"Node(x={self.x}, y={self.y}, t={self.t}, direction={self.direction}, g={self.g}, h={self.h}, f={self.f})\n"
-
-    @classmethod
-    def is_valid(cls, x: int, y: int, rows: int, cols: int, mapdata: ndarray) -> bool:
-        """Check if position is within bounds and not an obstacle."""
-        return 0 <= x < rows and 0 <= y < cols and mapdata[x][y] == 0
 
     @classmethod
     def get_h(cls, x: int, y: int, endx: int, endy: int) -> int:
@@ -200,11 +195,9 @@ def resolve_constraints(
 
 
 def astar(
-    mapdata,
-    startx: int,
-    starty: int,
-    endx: int,
-    endy: int,
+    mapdata: Map,
+    start: Tuple[int, int],
+    end: Tuple[int, int],
     startdirection: Direction,
     constraints: List[Dict] = [],
     max_iter=1000,
@@ -218,10 +211,8 @@ def astar(
     Args:
         mapdata (ndarray): 2D grid map matrix where 0 represents passable cells and
             non-zero values represent obstacles.
-        startx (int): X coordinate of the starting position (row index).
-        starty (int): Y coordinate of the starting position (column index).
-        endx (int): X coordinate of the destination position (row index).
-        endy (int): Y coordinate of the destination position (column index).
+        start (Tuple[int, int]): x, y coordinates of the starting position (row index, column index).
+        end (iTuple[int, int]): x, y coordinates of the destination position (row index, column index).
         startdirection (Direction): Initial direction of the AGV. Must be one of
             Direction.UP, Direction.DOWN, Direction.LEFT, or Direction.RIGHT.
         constraints (List[Dict], optional): List of constraint dictionaries for
@@ -250,9 +241,11 @@ def astar(
         >>> print(path)
         [(0, 0, 0, Direction.RIGHT), (0, 1, 1, Direction.RIGHT), ...]
     """
-    positive_constraints, negative_constraints, additional_constraint, earliest_stopping_time = (
-        resolve_constraints(constraints)
+    positive_constraints, negative_constraints, additional_constraint, earliest_stopping_time = resolve_constraints(
+        constraints
     )
+    startx, starty = int(start[0]), int(start[1])
+    endx, endy = int(end[0]), int(end[1])
 
     startNode = Node(
         startx,
@@ -288,7 +281,6 @@ def astar(
             continue
         closed_list.add((cur.x, cur.y, cur.t))
 
-        rows, cols = mapdata.shape
         # Generate movement neighbors
         for dx, dy, new_direction in movements:
             new_x, new_y = cur.x + dx, cur.y + dy
@@ -296,10 +288,7 @@ def astar(
                 new_direction = cur.direction
             dt = Node.get_dt(new_direction, cur.direction)
             new_t = cur.t + dt
-            if (
-                not Node.is_valid(new_x, new_y, rows, cols, mapdata)
-                or (new_x, new_y, new_t) in closed_list
-            ):
+            if not mapdata.is_valid(new_x, new_y) or (new_x, new_y, new_t) in closed_list:
                 continue
 
             new_h = Node.get_h(new_x, new_y, endx, endy)
@@ -319,9 +308,7 @@ def astar(
                 if t in negative_constraints:
                     constraints_to_be_considered.extend(negative_constraints[t])
 
-            if not neighbor.violate_constraints(
-                constraints_to_be_considered, endx, endy, earliest_stopping_time
-            ):
+            if not neighbor.violate_constraints(constraints_to_be_considered, endx, endy, earliest_stopping_time):
                 logging.debug(f"neighbor: {neighbor}")
                 if (neighbor.x, neighbor.y, neighbor.t) in open_list_info:
                     # If the neighbor is already in the open list, check if we found a better path
@@ -356,15 +343,19 @@ def astar(
 
 if __name__ == "__main__":
     # Example usage
-    root_dir = Path(__file__).parent.parent
-    log_file = root_dir / "logs" / "astar.log"
+    log_file = Path(__file__).parent.parent.parent / "logs" / "astar.log"
     log = logging.basicConfig(
         filename=log_file,
         filemode="w",
-        format="%(asctime)s - %(levelname)s - %(message)s",
+        format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
         datefmt="%Y-%m-%d-%H:%M:%S",
         level=logging.DEBUG,
     )
+    import numpy as np
+
     mapdata = [[0, 0, 0], [0, 1, 0], [0, 0, 0]]  # Simple grid map
-    path = astar(mapdata, 0, 0, 2, 2, Direction.RIGHT)
+    map = Map(np.array(mapdata))
+    start = (0, 0)  # Starting position
+    end = (2, 2)  # Destination position
+    path = astar(map, start, end, Direction.RIGHT)
     print(path)  # Output the path found by A* algorithm

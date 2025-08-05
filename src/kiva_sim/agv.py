@@ -1,16 +1,17 @@
-from ast import Tuple
+from __future__ import annotations
 import os
-from enum import IntEnum
+import logging
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
-from kiva_sim.states import AgvStatus, Direction
-from kiva_sim.orders import Shelf
+from kiva_sim.states import AgvStatus, Direction, ShelfStatus
 from kiva_sim.maps import MAP
+from kiva_sim.utlis import manhattan_distance
 from kiva_sim.tables import WorkCell
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", "3600"))
 BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))
 CHARGING_SPEED = 6 * BATTERY_CONSUMING_SPEED
+SHELF_COORDS = MAP.shelf_coords
 
 
 @dataclass
@@ -30,6 +31,30 @@ class ChargingMission:
 
     charging_station_id: int
     loc: Tuple[int, int]
+
+
+class Shelf:
+    def __init__(self, id: int):
+        """
+        Args:
+            id (int): shelf id
+            status (ShelfStatus): initial status of the shelf
+        """
+        self.id = id
+        self.status = ShelfStatus.TODO
+        self.inplace: bool = True
+        self.loc = SHELF_COORDS[id]
+        self.agv: Optional[AGV] = None
+
+    def __repr__(self):
+        return f"Shelf(id={self.id}, status={self.status!r}, inplace={self.inplace}, original_coord={self.loc}, current_coord={self.cur_loc}"
+
+    @property
+    def cur_loc(self) -> Tuple[int, int]:
+        """Current location of the shelf."""
+        if not self.agv:
+            return self.loc
+        return self.agv.loc
 
 
 class AGV:
@@ -96,6 +121,27 @@ class AGV:
     def charge(self):
         self.battery += CHARGING_SPEED
         self.battery = min(self.battery, FULL_CHARGE)
+
+    def goto_charge(self, available_stations: list[dict], charging_stations: list[dict]) -> None:
+
+        shelf = self.delivery_missions[-1].shelf
+        shelf.inplace = True
+        self.status = AgvStatus.TO_CHARGE
+        logging.info(f"vehicle {self.id} to charge")
+        target_station = min(
+            available_stations,
+            key=lambda s: manhattan_distance(self.loc, s["loc"]),
+        )
+        self.charging_missions.append(ChargingMission(target_station["id"], target_station["loc"]))
+        charging_stations[target_station["id"]]["occupied"] = True
+        self.point = 0
+
+    def assign_delivery_mission(self, mission: DeliveryMission):
+        """Assign a delivery mission to the AGV."""
+        self.delivery_missions.append(mission)
+        mission.shelf.status = ShelfStatus.DOING
+        mission.shelf.agv = self
+        mission.shelf.inplace = False
 
     def __repr__(self):
         return (

@@ -24,7 +24,7 @@ class Map:
         self._table_coords = None
         self._charging_station_coords = None
 
-    def check_valid(self, x: int, y: int) -> bool:
+    def is_valid(self, x: int, y: int) -> bool:
         """
         Check if the coordinates (x, y) are valid within the map and not occupied.
         """
@@ -83,25 +83,6 @@ if not map_path.exists():
     raise FileNotFoundError(f"Map file {map_name} not found in {root_path / 'maps'}.")
 df = pd.read_excel(map_path).fillna(0)
 MAP = Map(df.iloc[0:-1, 1:-1].values)
-
-SHELF_COORDS = MAP.shelf_coords
-
-
-class Shelf:
-    def __init__(self, id: int):
-        """
-        Args:
-            id (int): shelf id
-            status (ShelfStatus): initial status of the shelf
-        """
-        self.id = id
-        self.status = ShelfStatus.TODO
-        self.inplace: bool = True
-        self.loc = SHELF_COORDS[id]
-        self.cur_loc = self.loc
-
-    def __repr__(self):
-        return f"Shelf(id={self.id}, status={self.status!r}, inplace={self.inplace}, original_coord={self.loc}, current_coord={self.cur_loc}"
 
 
 if __name__ == "__main__":
