@@ -1,9 +1,13 @@
 import os
-import logging
+import numpy as np
 import pandas as pd
 from pathlib import Path
-import numpy as np
 from typing import List, Tuple, cast
+
+try:
+    from rich import print
+except ImportError:
+    ...
 
 
 class Map:
@@ -25,21 +29,19 @@ class Map:
         return 0 <= x < self.data.shape[0] and 0 <= y < self.data.shape[1] and self.data[x, y] == 0
 
     def __getitem__(self, key):
-        """支持 map[x, y] 或 map[x][y] 访问方式"""
+        """supports map[x, y] or map[key] access"""
         if isinstance(key, tuple) and len(key) == 2:
             x, y = key
             return self.data[x, y]
         else:
-            # 支持 map[x] 返回一行
             return self.data[key]
 
     def __setitem__(self, key, value):
-        """支持 map[x, y] = value 设置方式"""
+        """supports map[x, y] = value or map[key] = value access"""
         if isinstance(key, tuple) and len(key) == 2:
             x, y = key
             self.data[x, y] = value
         else:
-            # 支持 map[x] = array 设置一行
             self.data[key] = value
 
     @property

@@ -37,13 +37,14 @@ dependencies = [
     "python-dotenv",
 ]
 
-# [project.optional-dependencies]
-# dev = [
-#     "pytest>=6.0",
-#     "black",
-#     "flake8",
-#     "mypy",
-# ]
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "mypy",
+]
+colors = ["rich"]
+all = ["kiva-sim[dev, colors]"]
 
 [project.urls]
 Homepage = "https://github.com/Dexter6268"
@@ -54,6 +55,5 @@ Issues = "https://github.com/Dexter6268/Kiva-system-simulation/issues"
 # packages = ["kiva_sim"]
 
 
-
-# [tool.black]
-# line-length = 119
+[tool.black]
+line-length = 119
