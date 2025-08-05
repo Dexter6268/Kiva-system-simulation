@@ -1,48 +1,14 @@
 import os
 import logging
 import numpy as np
-from enum import IntEnum
 from pathlib import Path
 from typing import List, Tuple, Optional
-from kiva_sim.maps import MAP
+from kiva_sim.states import ShelfStatus
+from kiva_sim.maps import MAP, Shelf
 from kiva_sim.tables import Table
 from kiva_sim.agv import AGV, AgvStatus, DeliveryMission
 
 root_path = Path(__file__).parent.parent
-
-
-class ShelfStatus(IntEnum):
-    """
-    Enum for shelf status.
-    """
-
-    DONE = 0
-    DOING = 1
-    TODO = 2
-
-    def __repr__(self):
-        return self.name.lower()
-
-
-SHELF_COORDS = MAP.shelf_coords
-TABLE_COORDS = MAP.table_coords
-
-
-class Shelf:
-    def __init__(self, id: int):
-        """
-        Args:
-            id (int): shelf id
-            status (ShelfStatus): initial status of the shelf
-        """
-        self.id = id
-        self.status: ShelfStatus = ShelfStatus.TODO
-        self.inplace: bool = True
-        self.loc = SHELF_COORDS[id]
-        self.cur_loc = self.loc
-
-    def __repr__(self):
-        return f"Shelf(id={self.id}, status={self.status!r}, inplace={self.inplace}, original_coord={self.loc}, current_coord={self.cur_loc}"
 
 
 class Order:
@@ -60,9 +26,7 @@ class Order:
         return f"Order(id={self.id}, shelves={self.shelves}), table={self.table})"
 
 
-def init_orders(
-    shelves: List[Shelf], order_num: int = int(np.random.normal(50, 5, 1)[0])
-) -> List[Order]:
+def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 5, 1)[0])) -> List[Order]:
     """Generate a list of random orders for the warehouse simulation.
 
     Args:
@@ -83,11 +47,7 @@ def init_orders(
     for i in range(order_num):
         order_shelf_num = np.random.randint(1, 5)  # 1-4 shelves per order
         shelf_ids = np.random.choice(shelf_num, order_shelf_num, replace=False).tolist()
-        shelves_subset = [
-            shelves[shelf_id]
-            for shelf_id in shelf_ids
-            if shelves[shelf_id].status == ShelfStatus.TODO
-        ]
+        shelves_subset = [shelves[shelf_id] for shelf_id in shelf_ids if shelves[shelf_id].status == ShelfStatus.TODO]
         orders.append(Order(i, shelves_subset))
     return orders
 
@@ -108,9 +68,7 @@ def find_nearest_available_vehicle(vehicles: List[AGV], shelf: Shelf) -> Optiona
     )
 
 
-def orderDistribute(
-    order: Order, vehicles: List[AGV], shelves: List[Shelf], tabls: List[Table]
-) -> None:
+def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tabls: List[Table]) -> None:
     """Distributes order shelves to available AGV vehicles for delivery.
     Assigns each shelf in the order to the nearest available AGV. If the AGV
     previously handled the same shelf and is not charging, it directly assigns
@@ -131,7 +89,7 @@ def orderDistribute(
 
             if (
                 nearest_vehicle.delivery_missions
-                and nearest_vehicle.delivery_missions[-1].shelf_id == shelf.id
+                and nearest_vehicle.delivery_missions[-1].shelf == shelf
                 and nearest_vehicle.color_list[-1] == "y"
             ):  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
                 logging.info(f"vehicle {nearest_vehicle.id} assigned to {shelf} again")
@@ -154,7 +112,7 @@ def orderDistribute(
                     new_mission = DeliveryMission(
                         order_id=order.id,
                         sub_order_id=i,
-                        shelf_id=shelf.id,
+                        shelf=shelf,
                         work_cell=target_work_cell,
                         tsort=tsort,
                     )
@@ -167,7 +125,7 @@ def orderDistribute(
                     logging.info(f"vehicle {nearest_vehicle.id} going for {target_work_cell}")
                 else:
                     nearest_vehicle.status = AgvStatus.WAITING_TO_SELECT
-                    shelves[nearest_vehicle.delivery_missions[-1].shelf_id].inplace = False
+                    nearest_vehicle.delivery_missions[-1].shelf.inplace = False
                     nearest_vehicle.point = len(nearest_vehicle.path) - 1
                     logging.info(f"vehicle {nearest_vehicle.id} waiting to select")
             else:
@@ -177,7 +135,7 @@ def orderDistribute(
                 new_mission = DeliveryMission(
                     order_id=order.id,
                     sub_order_id=i,
-                    shelf_id=shelf.id,
+                    shelf=shelf,
                     work_cell=None,
                     tsort=tsort,
                 )

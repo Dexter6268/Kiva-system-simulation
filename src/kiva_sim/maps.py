@@ -2,7 +2,9 @@ import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from enum import IntEnum
 from typing import List, Tuple, cast
+from kiva_sim.states import ShelfStatus
 
 try:
     from rich import print
@@ -81,6 +83,26 @@ if not map_path.exists():
     raise FileNotFoundError(f"Map file {map_name} not found in {root_path / 'maps'}.")
 df = pd.read_excel(map_path).fillna(0)
 MAP = Map(df.iloc[0:-1, 1:-1].values)
+
+SHELF_COORDS = MAP.shelf_coords
+
+
+class Shelf:
+    def __init__(self, id: int):
+        """
+        Args:
+            id (int): shelf id
+            status (ShelfStatus): initial status of the shelf
+        """
+        self.id = id
+        self.status = ShelfStatus.TODO
+        self.inplace: bool = True
+        self.loc = SHELF_COORDS[id]
+        self.cur_loc = self.loc
+
+    def __repr__(self):
+        return f"Shelf(id={self.id}, status={self.status!r}, inplace={self.inplace}, original_coord={self.loc}, current_coord={self.cur_loc}"
+
 
 if __name__ == "__main__":
     a = np.array([[1, 2, 3], [4, 5, 6]])

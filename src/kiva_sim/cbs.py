@@ -42,9 +42,7 @@ def detect_collisions(paths):
         for j in range(i + 1, n):
             collision = detect_collision(paths[i], paths[j])
             if collision:
-                collisions.append(
-                    {"a1": i, "a2": j, "loc": collision["loc"], "timestep": collision["timestep"]}
-                )
+                collisions.append({"a1": i, "a2": j, "loc": collision["loc"], "timestep": collision["timestep"]})
     return collisions
 
 
@@ -208,9 +206,7 @@ def cbs(maps, starts, ends, directions, constraints, maxIteration):
     return None
 
 
-def cbs_reserve(
-    maps, arrived_at_start, root_paths, starts, ends, directions, constraints, maxIteration
-):
+def cbs_reserve(maps, arrived_at_start, root_paths, starts, ends, directions, constraints, maxIteration):
     """
     功能：返回无冲突路径列表
     :param maps: list of 2d-np.array，栅格地图矩阵（0代表可通行，非0代表障碍物）的列表（由于每台AGV的目标货架处坐标只对自己是可通行的，因此每台AGV的地图各有不同）
@@ -281,7 +277,7 @@ def cbs_reserve(
                 iconstraint,
             )
         if not path:
-            raise BaseException("No solution for AGV%d" % i)
+            raise BaseException(f"No solution for AGV {i}")
         root["paths"].append(path)
 
     root["cost"] = get_sum_of_cost(root["paths"])
@@ -370,8 +366,7 @@ def cbs_prioritized(maps, starts, ends, directions, constraints, maxIteration):
             )
             for i in range(len(id_list)):
                 if distance > (
-                    abs(starts[id_list[i]][0] - ends[id_list[i]][0])
-                    + abs(starts[id_list[i]][1] - ends[id_list[i]][1])
+                    abs(starts[id_list[i]][0] - ends[id_list[i]][0]) + abs(starts[id_list[i]][1] - ends[id_list[i]][1])
                 ):
                     distance = abs(starts[id_list[i]][0] - ends[id_list[i]][0]) + abs(
                         starts[id_list[i]][1] - ends[id_list[i]][1]
@@ -457,8 +452,7 @@ def cbs_prioritized(maps, starts, ends, directions, constraints, maxIteration):
     for ind, i in enumerate(cbs_id):
         print("root astar %d start" % ind)
         print(
-            "start: (%d, %d), end:(%d, %d)"
-            % (int(starts[i][0]), int(starts[i][1]), int(ends[i][0]), int(ends[i][1]))
+            "start: (%d, %d), end:(%d, %d)" % (int(starts[i][0]), int(starts[i][1]), int(ends[i][0]), int(ends[i][1]))
         )
         print("constraints: ", root["constraints"][i])
         path = astar(

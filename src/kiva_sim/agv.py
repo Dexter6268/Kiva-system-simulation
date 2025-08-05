@@ -3,6 +3,8 @@ import os
 from enum import IntEnum
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
+from kiva_sim.states import AgvStatus, Direction
+from kiva_sim.orders import Shelf
 from kiva_sim.maps import MAP
 from kiva_sim.tables import WorkCell
 
@@ -11,74 +13,13 @@ BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))
 CHARGING_SPEED = 6 * BATTERY_CONSUMING_SPEED
 
 
-class Direction(IntEnum):
-    """
-    Enum for representing the four cardinal directions.
-    """
-
-    UP = 0
-    RIGHT = 90
-    DOWN = 180
-    LEFT = 270
-
-    def __repr__(self):
-        return self.name.lower()
-
-
-class AgvStatus(IntEnum):
-    """Enumeration for AGV operational states.
-
-    This enum defines all possible states that an AGV can be in during warehouse
-    operations, including order fulfillment, charging, and standby modes.
-
-    Attributes:
-        AVAILABLE: AGV is idle and ready for new order assignment.
-        TO_SHELF: AGV is traveling from start position to target shelf location
-            (includes lifting the shelf).
-        TO_SELECT: AGV is traveling from shelf location to target workstation
-            (includes waiting for sorting at workstation).
-        WAITING_TO_SELECT: AGV is waiting at shelf location because target
-            workstation is occupied.
-        SELECTING: AGV is at workstation waiting for order sorting/picking process.
-        RETURN_SHELF: AGV is returning shelf from workstation to original location
-            (includes placing the shelf down).
-        TO_CHARGE: AGV has completed orders and is traveling from shelf location
-            to charging station.
-        WAITING_TO_CHARGE: AGV is waiting at shelf location because all charging
-            stations are occupied.
-        CHARGING: AGV is at charging station replenishing battery.
-        BACK_TO_START: AGV is returning to start position after completing orders
-            or charging.
-        ARRIVED_AT_START: AGV has reached start position and the position is marked
-            as non-traversable for path refresh.
-        WAITING_AT_START: AGV is on standby at start position with no assigned
-            orders and sufficient battery level.
-    """
-
-    AVAILABLE = 0
-    TO_SHELF = 1
-    TO_SELECT = 2
-    WAITING_TO_SELECT = 3
-    SELECTING = 4
-    RETURN_SHELF = 5
-    TO_CHARGE = 6
-    WAITING_TO_CHARGE = 7
-    CHARGING = 8
-    BACK_TO_START = 9
-    ARRIVED_AT_START = 10
-    WAITING_AT_START = 11
-
-    def __repr__(self):
-        return self.name.lower()
-
-
 @dataclass
 class DeliveryMission:
     """Represents a delivery mission assigned to an AGV."""
 
     order_id: int
     sub_order_id: int
-    shelf_id: int
+    shelf: Shelf
     work_cell: Optional[WorkCell] = None
     tsort: Optional[int] = None
 
@@ -116,7 +57,6 @@ class AGV:
         self.id = id
         self.x = x
         self.y = y
-        self.loc = (x, y)
         self.direction = direction
         self.battery = battery
         self.start = (x, y)
@@ -164,6 +104,10 @@ class AGV:
             f"delivery_missions={self.delivery_missions}, "
             f"charging_missions={self.charging_missions})\n"
         )
+
+    @property
+    def loc(self):
+        return (self.x, self.y)
 
 
 def init_agvs(agv_num: int) -> List[AGV]:

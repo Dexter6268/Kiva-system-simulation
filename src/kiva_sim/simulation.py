@@ -5,21 +5,17 @@ import numpy as np
 import seaborn as sns
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from kiva_sim.agv import AGV, AgvStatus, init_agvs, ChargingMission
+from kiva_sim.states import AgvStatus, ShelfStatus
+from kiva_sim.agv import AGV, init_agvs, ChargingMission
 from kiva_sim.cbs import cbs_reserve
 from kiva_sim.visualization import create_animation
+from kiva_sim.maps import MAP, Shelf
+from kiva_sim.tables import init_tables
 from kiva_sim.orders import (
-    MAP,
-    TABLE_COORDS,
-    ShelfStatus,
-    Shelf,
     init_orders,
     orderDistribute,
     manhattan_distance,
 )
-
-from kiva_sim.maps import Map, MAP
-from kiva_sim.tables import init_tables
 
 
 SHELF_COORDS = MAP.shelf_coords
@@ -138,17 +134,15 @@ def simulation(
                     # 如果AGV处于to shelf（从起点至目标货架）或return shelf（从工作台处送还货架）
                     if vehicle.status == AgvStatus.TO_SHELF or vehicle.status == AgvStatus.RETURN_SHELF:
                         # 如果更新路径时该AGV已经运行至目标货架处（正在抬起或放下货架）
-                        if shelves[vehicle.delivery_missions[-1].shelf_id].loc == vehicle.loc:
+                        if vehicle.delivery_missions[-1].shelf.loc == vehicle.loc:
                             staying_vehicles.append(vehicle.id)
                         else:
                             grid = deepcopy(AGV_MAP)
                             # 将目标货架处设为可通行
-                            grid[SHELF_COORDS[vehicle.delivery_missions[-1].shelf_id][0]][
-                                SHELF_COORDS[vehicle.delivery_missions[-1].shelf_id][1]
-                            ] = 0
+                            grid[vehicle.delivery_missions[-1].shelf.loc] = 0
                             maps.append(grid)
-                            starts.append((vehicle.x, vehicle.y))
-                            ends.append(SHELF_COORDS[vehicle.delivery_missions[-1].shelf_id])
+                            starts.append(vehicle.loc)
+                            ends.append(vehicle.delivery_missions[-1].shelf.loc)
                             if vehicle.point not in [0, len(vehicle.path) - 1]:
                                 root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
                             directions.append(vehicle.direction)
@@ -262,7 +256,7 @@ def simulation(
             target = "None"
             if vehicle.status in [AgvStatus.TO_SHELF, AgvStatus.RETURN_SHELF]:
                 last_delivery_mission = vehicle.delivery_missions[-1]
-                target = f"shelf {last_delivery_mission.shelf_id}"
+                target = f"shelf {last_delivery_mission.shelf.id}"
             elif vehicle.status == AgvStatus.TO_SELECT:
                 last_delivery_mission = vehicle.delivery_missions[-1]
                 assert last_delivery_mission.work_cell is not None
@@ -302,13 +296,13 @@ def simulation(
                 elif vehicle.color == "k":
                     shelf_color = "y"
                 last_delivery_mission = vehicle.delivery_missions[-1]
-                shelfInfo[last_delivery_mission.shelf_id] = shelf_color
+                shelfInfo[last_delivery_mission.shelf.id] = shelf_color
 
                 # 当AGV完成一个阶段的任务，更新AGV对象状态参数
                 if vehicle.point == len(vehicle.path) - 1:
                     if vehicle.status == AgvStatus.TO_SHELF:
                         logging.info(
-                            f"vehicle {vehicle.id} reached {shelves[last_delivery_mission.shelf_id]} for the first time"
+                            f"vehicle {vehicle.id} reached {shelves[last_delivery_mission.shelf.id]} for the first time"
                         )
                         available_workcells = [
                             work_cell
@@ -342,11 +336,11 @@ def simulation(
                         logging.info(f"vehicle {vehicle.id} start selecting at position {vehicle.loc}")
                     elif vehicle.status == AgvStatus.RETURN_SHELF:
                         logging.info(
-                            f"vehicle {vehicle.id} reached {shelves[last_delivery_mission.shelf_id]} for the second time"
+                            f"vehicle {vehicle.id} reached {shelves[last_delivery_mission.shelf.id]} for the second time"
                         )
                         if vehicle.check_battery(MAP):
                             # 更新货架在位情况
-                            shelves[last_delivery_mission.shelf_id].inplace = True
+                            shelves[last_delivery_mission.shelf.id].inplace = True
                             vehicle.status = AgvStatus.AVAILABLE
                             vehicle.point = 0
                         else:
@@ -354,14 +348,13 @@ def simulation(
                             if available_stations:
                                 go_to_charge(
                                     vehicle,
-                                    shelves[last_delivery_mission.shelf_id],
+                                    shelves[last_delivery_mission.shelf.id],
                                     available_stations,
                                     charging_stations,
                                 )
                             else:
                                 vehicle.status = AgvStatus.WAITING_TO_CHARGE
                                 logging.info(f"vehicle {vehicle.id} waiting to charge")
-
                     elif vehicle.status == AgvStatus.TO_CHARGE:
                         vehicle.status = AgvStatus.CHARGING
                         logging.info(f"vehicle {vehicle.id} start charging at position {vehicle.loc}")
@@ -371,12 +364,12 @@ def simulation(
                         if vehicle.selecting_process >= last_delivery_mission.tsort:
                             logging.info(f"vehicle {vehicle.id} finished selecting at position f{vehicle.loc}")
                             vehicle.status = AgvStatus.RETURN_SHELF
-                            logging.info(f"vehicle {vehicle.id} returning {shelves[last_delivery_mission.shelf_id]}")
+                            logging.info(f"vehicle {vehicle.id} returning {shelves[last_delivery_mission.shelf.id]}")
                             revenue += last_delivery_mission.tsort  # 结算分拣收益
                             assert last_delivery_mission.work_cell is not None
                             last_delivery_mission.work_cell.occupied = False
 
-                            shelves[last_delivery_mission.shelf_id].status = ShelfStatus.DONE
+                            shelves[last_delivery_mission.shelf.id].status = ShelfStatus.DONE
                             vehicle.selecting_process = 0
                             vehicle.point = 0
                     elif vehicle.status == AgvStatus.CHARGING:
@@ -417,7 +410,7 @@ def simulation(
                         if available_stations:
                             go_to_charge(
                                 vehicle,
-                                shelves[last_delivery_mission.shelf_id],
+                                last_delivery_mission.shelf,
                                 available_stations,
                                 charging_stations,
                             )

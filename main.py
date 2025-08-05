@@ -67,7 +67,7 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d-%H:%M:%S",
         level=logging.INFO,
     )
-    order_num = 1  # 订单数量
+    order_num = 2  # 订单数量
 
     simulation(
         seed=100,
