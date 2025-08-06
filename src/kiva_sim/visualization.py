@@ -47,20 +47,13 @@ def create_animation(
     charging_station_x = []
     charging_station_y = []
     for i in range(TABLE_NUM):
-        table_x.append(TABLE_COORDS[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间，更美观
+        table_x.append(TABLE_COORDS[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间
         table_y.append(TABLE_COORDS[i][1] - 0.5)
-        ax.scatter(table_y[i], table_x[i], s=80, c="white", marker=("$" + str(i) + "$"), zorder=2)
+        ax.scatter(table_y[i], table_x[i], s=80, c="white", marker=(f"${i}$"), zorder=2)
     for i in range(CHARGING_STATION_NUM):
-        charging_station_x.append(CHARGING_STATION_COORD[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间，更美观
+        charging_station_x.append(CHARGING_STATION_COORD[i][0] - 0.5)
         charging_station_y.append(CHARGING_STATION_COORD[i][1] - 0.5)
-        ax.scatter(
-            charging_station_y[i],
-            charging_station_x[i],
-            s=80,
-            c="white",
-            marker=("$" + str(i) + "$"),
-            zorder=2,
-        )
+        ax.scatter(charging_station_y[i], charging_station_x[i], s=80, c="white", marker=(f"${i}$"), zorder=2)
 
     plt.xlim(-1, map_grid.shape[1] - 1)  # 将map的列数作为图中的x坐标
     plt.ylim(map_grid.shape[0] - 1, -1)  # 将map的行数作为图中的y坐标
@@ -70,14 +63,7 @@ def create_animation(
     plt.yticks(my_y_ticks)
     plt.grid(True)  # 开启栅格
     plt.scatter(table_y, table_x, s=BLOCK_SIZE, c="r", marker="s", label="table")
-    plt.scatter(
-        charging_station_y,
-        charging_station_x,
-        s=BLOCK_SIZE,
-        c="green",
-        marker="s",
-        label="charging_station",
-    )
+    plt.scatter(charging_station_y, charging_station_x, s=BLOCK_SIZE, c="green", marker="s", label="charging_station")
 
     # 动画初始化
     # -------------------------------------------------------------------------------------------------------
@@ -93,16 +79,7 @@ def create_animation(
     sc_shelf = ax.scatter(y_shelf, x_shelf, s=BLOCK_SIZE, c="y", marker="s", label="shelf")
     # 货架id
     for i in range(len(SHELF_COORDS)):
-        ax.text(
-            y_shelf[i],
-            x_shelf[i],
-            str(i),
-            ha="center",
-            va="center",
-            c="white",
-            zorder=2,
-            fontweight="bold",
-        )
+        ax.text(y_shelf[i], x_shelf[i], str(i), ha="center", va="center", c="white", zorder=2, fontweight="bold")
 
     # AGV本体
     x_init = [row["x"] - 0.5 for row in simInfo[0]["AGVInfo"]]
@@ -112,32 +89,16 @@ def create_animation(
     x_direction_init = [row["x"] - 0.5 + 0.2 for row in simInfo[0]["AGVInfo"]]
     sc_direction = ax.scatter(y_init, x_direction_init, s=80, c="r", marker="s", zorder=4)
     # AGV id
-    sc_markers = []
-    for i in range(agv_num):
-        sc_markers.append(
-            ax.text(
-                y_init[i],
-                x_init[i],
-                str(i),
-                ha="center",
-                va="center",
-                c="white",
-                zorder=5,
-                fontweight="bold",
-            )
-        )
+    sc_markers = [
+        ax.text(y_init[i], x_init[i], str(i), ha="center", va="center", c="white", zorder=5, fontweight="bold")
+        for i in range(agv_num)
+    ]
 
     # 图标
     ax.legend(bbox_to_anchor=(1, 1), loc="upper left", markerscale=0.3, fontsize=FONT_SIZE)
     # 计时
     timestep = ax.text(
-        map_grid.shape[1] - 0.8,
-        2,
-        "time step: 0",
-        ha="left",
-        va="top",
-        fontsize=FONT_SIZE,
-        fontweight="bold",
+        map_grid.shape[1] - 0.8, 2, "time step: 0", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
     )
     # AGV状态
     status_head = ax.text(
@@ -223,12 +184,12 @@ def create_animation(
 
         x_direction, y_direction = x.copy(), y.copy()
         direction2offset = {"up": (-1, 0), "right": (0, 1), "down": (1, 0), "left": (0, -1)}
-
+        offset_value = 0.18
         for i in range(agv_num):
             agv_direction = sim_info["AGVInfo"][i]["direction"]
             dx, dy = direction2offset[agv_direction]
-            x_direction[i] += dx * 0.2
-            y_direction[i] += dy * 0.2
+            x_direction[i] += dx * offset_value
+            y_direction[i] += dy * offset_value
             # 更新AGV id
             sc_markers[i].set_position((y[i], x[i]))
         sc_position.set_offsets(np.c_[y, x])  # 更新AGV位置
@@ -236,9 +197,7 @@ def create_animation(
         sc_shelf.set_color(shelf_color)  # 更新货架颜色
         sc_direction.set_offsets(np.c_[y_direction, x_direction])  # 更新AGV方向
 
-    ani = FuncAnimation(
-        fig, update, frames=simInfo, interval=interval, repeat=False, cache_frame_data=False
-    )  # 创建动画效果
+    ani = FuncAnimation(fig, update, frames=simInfo, interval=interval, repeat=False, cache_frame_data=False)  # type: ignore
     fps = 1000 / interval
     return ani, fps
 

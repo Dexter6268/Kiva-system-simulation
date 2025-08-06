@@ -33,11 +33,11 @@ WORKER_COST = float(os.getenv("WORKER_COST", 34 / 3600))  # 分拣工人每秒�
 def init_simu(
     agv_num: int, order_num: int
 ) -> Tuple[Map, List[Table], List[AGV], List[Shelf], List[dict], List[Order]]:
-    AGV_MAP = deepcopy(MAP)  # map for AGVs
+    GLOBAL_AGV_MAP = deepcopy(MAP)  # map for all AGVs
     tables = init_tables(TABLE_NUM)
     for table in tables:
         for cell in table.work_cells:
-            AGV_MAP[cell.loc] = 5  # 将工作台附近禁止通行
+            GLOBAL_AGV_MAP[cell.loc] = 5  # 将工作台附近禁止通行
     vehicles = init_agvs(agv_num)
     shelves = [Shelf(i) for i in range(SHELF_NUM)]
     charging_stations = [
@@ -45,7 +45,7 @@ def init_simu(
     ]
 
     orders = init_orders(shelves=shelves, order_num=order_num)
-    return AGV_MAP, tables, vehicles, shelves, charging_stations, orders
+    return GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders
 
 
 def get_moving_vehicles(vehicles: List[AGV], AGV_MAP: Map) -> Tuple[List[AGV], List[Dict]]:
@@ -213,7 +213,7 @@ def simulation(
     # 初始化
     # -------------------------------------------------------------------------------------------------------
     revenue = 0  # 订单完成收益
-    AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
+    GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
     t = 0  # 时间步
     sim_info = []  # 仿真信息，用来实现可视化
     orders_completed_time = float("inf")
@@ -235,7 +235,7 @@ def simulation(
             if vehicle.needs_path_renewal:
                 logging.info(f"vehicle {vehicle.id} triggered renewing")
                 arrived_at_start = any(v.status == AgvStatus.ARRIVED_AT_START for v in vehicles)
-                moving_vehicles, additional_constraints = get_moving_vehicles(vehicles, AGV_MAP)
+                moving_vehicles, additional_constraints = get_moving_vehicles(vehicles, GLOBAL_AGV_MAP)
                 maps, starts, ends, root_paths, directions = extract_path_planning_data(moving_vehicles)
                 logging.info(f"cbs starts searching")
                 if not starts:
@@ -300,8 +300,8 @@ def simulation(
                         vehicle.status = AgvStatus.BACK_TO_START
                 else:
                     vehicle.status = AgvStatus.WAITING_AT_START
-                    AGV_MAP[vehicle.start] = 4
-            elif vehicle.status != AgvStatus.AVAILABLE and vehicle.status != AgvStatus.WAITING_AT_START:
+                    GLOBAL_AGV_MAP[vehicle.start] = 4
+            elif vehicle.status not in (AgvStatus.AVAILABLE, AgvStatus.WAITING_AT_START):
                 vehicle.move()
                 shelf_color = "w" if vehicle.color == "y" else "y"
                 last_delivery_mission = vehicle.delivery_missions[-1]
@@ -383,7 +383,7 @@ def simulation(
                         if available_stations:
                             vehicle.goto_charge(available_stations, charging_stations)
                     elif vehicle.status == AgvStatus.BACK_TO_START:
-                        AGV_MAP[vehicle.start] = 4
+                        GLOBAL_AGV_MAP[vehicle.start] = 4
                         num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
                         if num_idle_vehicles < agv_num - 1:
                             logging.info(f"vehicle {vehicle.id} arrived at start")
