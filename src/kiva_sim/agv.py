@@ -106,7 +106,6 @@ class AGV:
         """
         if self.point < len(self.path) - 1 and self.status not in [
             AgvStatus.WAITING_TO_CHARGE,
-            AgvStatus.WAITING_AT_START,
             AgvStatus.WAITING_TO_SELECT,
             AgvStatus.SELECTING,
             AgvStatus.CHARGING,
@@ -115,10 +114,8 @@ class AGV:
             x, y, _, self.direction = self.path[self.point]
             self.loc = (x, y)
             self.color = self.color_list[self.point]
-            if self.path[self.point - 1][:2] == self.path[self.point][:2]:
-                self.battery -= BATTERY_CONSUMING_SPEED * 2  # 转弯时耗电是匀速前进时的2倍
-            else:
-                self.battery -= BATTERY_CONSUMING_SPEED
+            turning_coef = 2 if self.path[self.point - 1][:2] == self.path[self.point][:2] else 1
+            self.battery -= BATTERY_CONSUMING_SPEED * turning_coef  # 转弯时耗电是匀速前进时的2倍
         self.battery = max(self.battery, 0)
 
     def check_battery(self, map_shape: Tuple) -> bool:
