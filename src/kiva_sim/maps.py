@@ -2,9 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from enum import IntEnum
 from typing import List, Tuple, cast
-from kiva_sim.states import ShelfStatus
 
 try:
     from rich import print

@@ -143,23 +143,25 @@ def create_animation(
     status_head = ax.text(
         -8,
         4,
-        "             AGV info\nid     status                    target",
+        f"{'AGV info':>21}\n{'id':^7}{'status': ^16}{'target':^16}",
         ha="left",
         va="top",
         fontsize=FONT_SIZE,
         fontweight="bold",
     )
-    lines = (f"{str(i).ljust(6)}{simInfo[0]['AGVInfo'][i]['status']}" for i in range(agv_num))
+    lines = (f"{id:^7}{simInfo[0]['AGVInfo'][id]['status']:^16}" for id in range(agv_num))
     text = "\n".join(lines) + "\n"
     status = ax.text(-8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
 
     # AGV目标
-    lines = (f"{simInfo[0]['AGVInfo'][i]['target']}" for i in range(agv_num))
+    lines = (f"{simInfo[0]['AGVInfo'][i]['target']: ^16}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
     target = ax.text(-4, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 电量
-    charge_head = ax.text(47.2, 4, "AGV info\nid battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
-    lines = (f"{str(i).ljust(5)}{simInfo[0]['AGVInfo'][i]['battery']}" for i in range(agv_num))
+    charge_head = ax.text(
+        47.2, 4, f"AGV info\n{'id':^7} battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
+    )
+    lines = (f"{i:^7}{simInfo[0]['AGVInfo'][i]['battery']}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
     battery = ax.text(map_grid.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 订单完成数量
@@ -179,35 +181,36 @@ def create_animation(
 
     # -------------------------------------------------------------------------------------------------------
     # 更新函数
-    def update(simInfo):
-        x = [row["x"] - 0.5 for row in simInfo["AGVInfo"]]
-        y = [row["y"] - 0.5 for row in simInfo["AGVInfo"]]
-        t = simInfo["t"]  # 时间步
+    def update(sim_info):
+        x = [row["x"] - 0.5 for row in sim_info["AGVInfo"]]
+        y = [row["y"] - 0.5 for row in sim_info["AGVInfo"]]
+        t = sim_info["t"]  # 时间步
         # 更新时间步信息
-        timestep.set_text("time step: " + str(t))
+        timestep.set_text(f"time step: {t}")
         # 更新AGV状态信息
-        lines = (f"{str(i).ljust(6)}{simInfo['AGVInfo'][i]['status']}" for i in range(agv_num))
+        agv_info = sim_info["AGVInfo"]
+        lines = (f"{i: ^7}{agv_info[i]['status']: ^16}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         status.set_text(text)
-        lines = (f"{str(i).ljust(5)}{simInfo['AGVInfo'][i]['battery']}" for i in range(agv_num))
+        lines = (f"{i: ^7}{agv_info[i]['battery']}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         battery.set_text(text)
         # 更新AGV目标
-        lines = (f"{simInfo['AGVInfo'][i]['target']}" for i in range(agv_num))
+        lines = (f"{agv_info[i]['target']: ^16}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         target.set_text(text)
 
         # 更新订单完成数量
-        orders_completed.set_text(f"order completed: {simInfo["orders_completed"]} / {order_num}")
+        orders_completed.set_text(f"order completed: {sim_info["orders_completed"]} / {order_num}")
 
         # 更新成本信息
         total_net_revenue = (
-            simInfo["revenue"] * 0.5
+            sim_info["revenue"] * 0.5
             - (cost_agv * agv_num + cost_charging_station * CHARGING_STATION_NUM) * t
             - cost_worker * table_num * min(t, order_complete_time)
         )
         text_cost = "revenue: {revenue:.1f}\ncost_agv: {cost_agv:.2f}\ncost_charging_station: {cost_charging_station:.2f}\ncost_workers: {cost_workers:.1f}\ntotal net revenue: {total_net_revenue:.1f}".format(
-            revenue=simInfo["revenue"] * 0.5,
+            revenue=sim_info["revenue"] * 0.5,
             cost_agv=cost_agv * agv_num * t,
             cost_charging_station=cost_charging_station * CHARGING_STATION_NUM * t,
             cost_workers=cost_worker * table_num * min(t, order_complete_time),
@@ -215,31 +218,31 @@ def create_animation(
         )
         cost.set_text(text_cost)
 
-        AGV_color = [row["color"] for row in simInfo["AGVInfo"]]
-        shelf_color = simInfo["shelfInfo"]
+        AGV_color = [row["color"] for row in sim_info["AGVInfo"]]
+        shelf_color = sim_info["shelfInfo"]
 
-        x_direction = x.copy()
-        y_direction = y.copy()
+        x_direction, y_direction = x.copy(), y.copy()
+        direction2offset = {"up": (-1, 0), "right": (0, 1), "down": (1, 0), "left": (0, -1)}
 
-        for i in range(len(simInfo["AGVInfo"])):
-            if simInfo["AGVInfo"][i]["direction"] == "up":
-                x_direction[i] -= 0.2
-            if simInfo["AGVInfo"][i]["direction"] == "down":
-                x_direction[i] += 0.2
-            if simInfo["AGVInfo"][i]["direction"] == "left":
-                y_direction[i] -= 0.2
-            if simInfo["AGVInfo"][i]["direction"] == "right":
-                y_direction[i] += 0.2
+        for i in range(agv_num):
+            agv_direction = sim_info["AGVInfo"][i]["direction"]
+            dx, dy = direction2offset[agv_direction]
+            x_direction[i] += dx * 0.2
+            y_direction[i] += dy * 0.2
+            # 更新AGV id
+            sc_markers[i].set_position((y[i], x[i]))
         sc_position.set_offsets(np.c_[y, x])  # 更新AGV位置
         sc_position.set_color(AGV_color)  # 更新AVG颜色
         sc_shelf.set_color(shelf_color)  # 更新货架颜色
         sc_direction.set_offsets(np.c_[y_direction, x_direction])  # 更新AGV方向
-        # 更新AGV id
-        for i in range(agv_num):
-            sc_markers[i].set_position((y[i], x[i]))
 
     ani = FuncAnimation(
         fig, update, frames=simInfo, interval=interval, repeat=False, cache_frame_data=False
     )  # 创建动画效果
     fps = 1000 / interval
     return ani, fps
+
+
+if __name__ == "__main__":
+    i = 5
+    print(f"{i:<10}sdf")

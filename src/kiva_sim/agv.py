@@ -1,12 +1,14 @@
 from __future__ import annotations
 import os
 import logging
+import numpy as np
 from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
-from kiva_sim.states import AgvStatus, Direction, ShelfStatus
+from typing import List, Tuple, Optional, TYPE_CHECKING
+from kiva_sim.states import AgvStatus, Direction, OrderStatus
 from kiva_sim.maps import MAP
 from kiva_sim.utlis import manhattan_distance
 from kiva_sim.tables import WorkCell
+from kiva_sim.models import SubOrder
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", "3600"))
 BATTERY_CONSUMING_SPEED = int(os.getenv("BATTERY_CONSUMING_SPEED", "1"))
@@ -19,10 +21,11 @@ class DeliveryMission:
     """Represents a delivery mission assigned to an AGV."""
 
     order_id: int
-    sub_order_id: int
+    sub_order: SubOrder
     shelf: Shelf
     work_cell: Optional[WorkCell] = None
-    tsort: Optional[int] = None
+    # 分拣时间服从均值为10，标准差为2的正态分布
+    tsort: Optional[int] = max(1, int(np.random.normal(10, 2, 1)[0]))
 
 
 @dataclass
@@ -41,13 +44,11 @@ class Shelf:
             status (ShelfStatus): initial status of the shelf
         """
         self.id = id
-        self.status = ShelfStatus.TODO
-        self.inplace: bool = True
         self.loc = SHELF_COORDS[id]
         self.agv: Optional[AGV] = None
 
     def __repr__(self):
-        return f"Shelf(id={self.id}, status={self.status!r}, inplace={self.inplace}, original_coord={self.loc}, current_coord={self.cur_loc}"
+        return f"Shelf(id={self.id}, available={self.available}, original_loc={self.loc}, cur_loc={self.cur_loc}"
 
     @property
     def cur_loc(self) -> Tuple[int, int]:
@@ -55,6 +56,11 @@ class Shelf:
         if not self.agv:
             return self.loc
         return self.agv.loc
+
+    @property
+    def available(self) -> bool:
+        """Check if the shelf is available."""
+        return self.agv is None
 
 
 class AGV:
@@ -125,7 +131,7 @@ class AGV:
     def goto_charge(self, available_stations: list[dict], charging_stations: list[dict]) -> None:
 
         shelf = self.delivery_missions[-1].shelf
-        shelf.inplace = True
+        shelf.agv = None
         self.status = AgvStatus.TO_CHARGE
         logging.info(f"vehicle {self.id} to charge")
         target_station = min(
@@ -139,9 +145,8 @@ class AGV:
     def assign_delivery_mission(self, mission: DeliveryMission):
         """Assign a delivery mission to the AGV."""
         self.delivery_missions.append(mission)
-        mission.shelf.status = ShelfStatus.DOING
+        mission.sub_order.status = OrderStatus.DOING
         mission.shelf.agv = self
-        mission.shelf.inplace = False
 
     def __repr__(self):
         return (
@@ -154,6 +159,124 @@ class AGV:
     @property
     def loc(self):
         return (self.x, self.y)
+
+    def needs_path_renewal(self) -> bool:
+        return (
+            self.status
+            not in [
+                AgvStatus.AVAILABLE,
+                AgvStatus.WAITING_TO_CHARGE,
+                AgvStatus.WAITING_AT_START,
+                AgvStatus.WAITING_TO_SELECT,
+            ]
+            and self.point == 0
+        )
+
+    def updates_path(self, new_path: List[Tuple[int, int, int, Direction]]) -> None:
+        """Update the AGV's path."""
+        self.point = 0
+        self.path = new_path
+        color = "y" if self.status in [AgvStatus.TO_SELECT, AgvStatus.RETURN_SHELF] else "k"
+        self.color_list = [color] * len(new_path)
+
+    # def renew_path(self, AGV_MAP: Map, LIFTING_TIME: int) -> None:
+    # logging.info(f"vehicle {vehicle.id} triggered renewing")
+    # additional_constraints: List[Dict] = []
+    # # 发生路径更新时已经抵达目标点的AGV（在抬起或放下货架，或在工作台处分拣）
+    # staying_vehicles: List[int] = []
+    # # 发生路径更新时未抵达目标点的AGV
+    # moving_vehicles: List[int] = []
+    # moving_vehicle_id: int = 0
+    # maps = []
+    # starts: List[Tuple[int, int]] = []
+    # ends = []
+    # root_paths: Dict = {}
+    # directions = []
+    # arrived_at_start = any(vehicle.status == AgvStatus.ARRIVED_AT_START for vehicle in vehicles)
+
+    # if vehicle.status == AgvStatus.TO_SHELF or vehicle.status == AgvStatus.RETURN_SHELF:
+    #     # 如果更新路径时该AGV已经运行至目标货架处（正在抬起或放下货架）
+    #     last_delivery_mission = vehicle.delivery_missions[-1]
+    #     if last_delivery_mission.shelf.loc == vehicle.loc:
+    #         staying_vehicles.append(vehicle.id)
+    #     else:
+    #         grid = deepcopy(AGV_MAP)
+    #         # 将目标货架处设为可通行
+    #         grid[last_delivery_mission.shelf.loc] = 0
+    #         maps.append(grid)
+    #         starts.append(vehicle.loc)
+    #         ends.append(last_delivery_mission.shelf.loc)
+    #         if vehicle.point not in [0, len(vehicle.path) - 1]:
+    #             root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
+    #         directions.append(vehicle.direction)
+    #         moving_vehicles.append(vehicle.id)
+    #         # 添加额外约束，让AGV在货架处停留一段时间表示在抬起或放下货架
+    #         additional_constraints.append(
+    #             {
+    #                 "agent": moving_vehicle_id,
+    #                 "timestep": LIFTING_TIME,
+    #                 "type": "additional",
+    #             }
+    #         )
+    #         moving_vehicle_id += 1
+    # elif vehicle.status == AgvStatus.TO_SELECT:
+    #     last_delivery_mission = vehicle.delivery_missions[-1]
+    #     assert last_delivery_mission.work_cell is not None
+    #     # 如果更新路径时该AGV已经运行至工作台（正在分拣）
+    #     if last_delivery_mission.work_cell.loc == vehicle.loc:
+    #         staying_vehicles.append(vehicle.id)
+    #     else:
+    #         grid = deepcopy(AGV_MAP)
+    #         # 将目标工作台处设为可通行
+    #         grid[last_delivery_mission.work_cell.loc] = 0
+    #         maps.append(grid)
+    #         starts.append(vehicle.loc)
+    #         ends.append(last_delivery_mission.work_cell.loc)
+    #         if vehicle.point not in [0, len(vehicle.path) - 1]:
+    #             root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
+    #         grid[last_delivery_mission.work_cell.loc] = 0
+    #         directions.append(vehicle.direction)
+    #         moving_vehicles.append(vehicle.id)
+    #         moving_vehicle_id += 1
+    # elif vehicle.status == AgvStatus.TO_CHARGE:
+    #     if len(vehicle.charging_missions) > 0 and vehicle.charging_missions[-1].loc == vehicle.loc:
+    #         staying_vehicles.append(vehicle.id)
+    #     else:
+    #         grid = deepcopy(AGV_MAP)
+    #         # 将目标充电桩处设为可通行
+    #         grid[vehicle.charging_missions[-1].loc[0]][vehicle.charging_missions[-1].loc[1]] = 0
+    #         starts.append(vehicle.loc)
+    #         ends.append(vehicle.charging_missions[-1].loc)
+    #         if vehicle.point not in [0, len(vehicle.path) - 1]:
+    #             root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
+    #         grid[vehicle.charging_missions[-1].loc[0]][vehicle.charging_missions[-1].loc[1]] = 0
+    #         maps.append(grid)
+    #         directions.append(vehicle.direction)
+    #         moving_vehicles.append(vehicle.id)
+    #         moving_vehicle_id += 1
+    # elif vehicle.status == AgvStatus.BACK_TO_START:
+    #     if vehicle.loc == vehicle.start:
+    #         staying_vehicles.append(vehicle.id)
+    #     else:
+    #         grid = deepcopy(AGV_MAP)
+    #         maps.append(grid)
+    #         starts.append(vehicle.loc)
+    #         ends.append(vehicle.start)
+    #         if vehicle.point not in [0, len(vehicle.path) - 1]:
+    #             root_paths[moving_vehicle_id] = vehicle.path[vehicle.point :]
+    #         directions.append(vehicle.direction)
+    #         moving_vehicles.append(vehicle.id)
+    #         moving_vehicle_id += 1
+    # elif vehicle.status == AgvStatus.ARRIVED_AT_START:
+    #     staying_vehicles.append(vehicle.id)
+    #     vehicle.status = AgvStatus.WAITING_AT_START
+    #         logging.info(f"vehicle {vehicle.id} waiting at start")
+    # logging.info(f"staying_vehicles: {staying_vehicles}")
+    # logging.info(f"moving_vehicles: {moving_vehicles}")
+    # logging.info(f"starts: {starts}")
+    # logging.info(f"ends: {ends}")
+    # logging.info(f"directions: {directions}")
+    # logging.info(f"cbs starts searching")
 
 
 def init_agvs(agv_num: int) -> List[AGV]:

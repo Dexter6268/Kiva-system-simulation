@@ -1,9 +1,9 @@
 from enum import IntEnum
 
 
-class ShelfStatus(IntEnum):
+class OrderStatus(IntEnum):
     """
-    Enum for shelf status.
+    Enum for order status.
     """
 
     DONE = 0

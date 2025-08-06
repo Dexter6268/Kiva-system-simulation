@@ -292,16 +292,7 @@ def astar(
                 continue
 
             new_h = Node.get_h(new_x, new_y, endx, endy)
-
-            neighbor = Node(
-                new_x,
-                new_y,
-                new_t,
-                new_direction,
-                cur.g + TEMPORAL_COST * dt,
-                new_h,
-                cur,
-            )
+            neighbor = Node(new_x, new_y, new_t, new_direction, cur.g + TEMPORAL_COST * dt, new_h, cur)
 
             constraints_to_be_considered = []
             for t in range(cur.t, neighbor.t + 1):
@@ -325,6 +316,7 @@ def astar(
         logging.debug("----------------------------------------------------------")
         iter += 1
 
+    logging.info(f"Path found in {iter} iterations")
     path = []
     while cur:
         path.append((cur.x, cur.y, cur.t, cur.direction))

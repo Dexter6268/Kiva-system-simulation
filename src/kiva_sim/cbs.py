@@ -3,6 +3,7 @@ import heapq
 import logging
 from copy import deepcopy
 from collections import defaultdict
+from token import OP
 from typing import List, Optional, Tuple, Dict, TypedDict
 from kiva_sim.a_star import astar
 from kiva_sim.maps import Map
@@ -166,7 +167,7 @@ def cbs_reserve(
     constraints: List[Dict],
     max_iter: int = 1000,
     astar_max_iter: int = 1500,
-):
+) -> Optional[List[List[Tuple[int, int, int, Direction]]]]:
     """Resolves conflicts and returns collision-free paths using CBS algorithm.
 
     Implements Conflict-Based Search (CBS) to find paths for multiple AGVs while avoiding:

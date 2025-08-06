@@ -1,30 +1,53 @@
-import os
 import logging
 import numpy as np
 from pathlib import Path
-from typing import List, Tuple, Optional
-from kiva_sim.states import ShelfStatus, AgvStatus
-from kiva_sim.maps import MAP
-from kiva_sim.tables import Table
+from typing import List, Optional, TYPE_CHECKING
+from dataclasses import dataclass
+from kiva_sim.states import AgvStatus, OrderStatus
+from kiva_sim.tables import Table, WorkCell
 from kiva_sim.utlis import manhattan_distance
 from kiva_sim.agv import AGV, Shelf, DeliveryMission
-
-root_path = Path(__file__).parent.parent
+from kiva_sim.models import SubOrder
 
 
 class Order:
-    def __init__(self, id: int, shelves: List[Shelf]):
+    def __init__(self, id: int, sub_orders: List[SubOrder]):
         """
         Args:
             id (int): order id
             shelves (List[Shelf]): list of shelves
         """
         self.id = id
-        self.shelves = shelves
-        self.table: Optional[int] = None
+        self.sub_orders = sub_orders
+        self.table_id: Optional[int] = None
 
     def __repr__(self):
-        return f"Order(id={self.id}, shelves={self.shelves}), table={self.table})"
+        return f"Order(id={self.id}, sub_orders={self.sub_orders}), table={self.table_id})"
+
+    @property
+    def status(self) -> OrderStatus:
+        """Returns the status of the order based on the status of its shelves."""
+        if all(sub_order.status == OrderStatus.DONE for sub_order in self.sub_orders):
+            return OrderStatus.DONE
+        elif all(sub_order.status == OrderStatus.TODO for sub_order in self.sub_orders):
+            return OrderStatus.TODO
+        else:
+            return OrderStatus.DOING
+
+
+def get_available_workcells(tables: List[Table], order: Order) -> List[WorkCell]:
+    if order.table_id is not None:
+        table = tables[order.table_id]
+        available_workcells = [work_cell for work_cell in table.work_cells if not work_cell.occupied]
+    else:
+        available_workcells = [
+            work_cell for table in tables for work_cell in table.work_cells if not work_cell.occupied
+        ]
+    return available_workcells
+
+
+def get_target_workcell(available_workcells: List[WorkCell], nearest_vehicle: AGV) -> WorkCell:
+    return min(available_workcells, key=lambda work_cell: manhattan_distance(nearest_vehicle.loc, work_cell.loc))
 
 
 def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 5, 1)[0])) -> List[Order]:
@@ -48,8 +71,9 @@ def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 
     for i in range(order_num):
         order_shelf_num = np.random.randint(1, 5)  # 1-4 shelves per order
         shelf_ids = np.random.choice(shelf_num, order_shelf_num, replace=False).tolist()
-        shelves_subset = [shelves[shelf_id] for shelf_id in shelf_ids if shelves[shelf_id].status == ShelfStatus.TODO]
-        orders.append(Order(i, shelves_subset))
+        # todo consider the case that some shelf isn't available
+        sub_orders = [SubOrder(j, shelf_id) for j, shelf_id in enumerate(shelf_ids)]
+        orders.append(Order(i, sub_orders))
     return orders
 
 
@@ -61,11 +85,11 @@ def find_nearest_available_vehicle(vehicles: List[AGV], shelf: Shelf) -> Optiona
 
     return min(
         available_vehicles,
-        key=lambda vehicle: manhattan_distance((vehicle.x, vehicle.y), shelf.loc),
+        key=lambda vehicle: manhattan_distance(vehicle.loc, shelf.loc),
     )
 
 
-def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tabls: List[Table]) -> None:
+def distribute_order(order: Order, vehicles: List[AGV], shelves: List[Shelf], tabls: List[Table]) -> None:
     """Distributes order shelves to available AGV vehicles for delivery.
     Assigns each shelf in the order to the nearest available AGV. If the AGV
     previously handled the same shelf and is not charging, it directly assigns
@@ -77,9 +101,10 @@ def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tab
         tabls: List of tables containing work cells for order processing.
     """
 
-    for i, shelf in enumerate(order.shelves):
+    for sub_order in order.sub_orders:
         # 如果该货架尚未被分配且仍然在原位（没有被其它AGV运走）
-        if shelf.status == ShelfStatus.TODO:
+        shelf = shelves[sub_order.shelf_id]
+        if sub_order.status == OrderStatus.TODO and shelf.available:
             nearest_vehicle = find_nearest_available_vehicle(vehicles, shelf)
             if nearest_vehicle is None:
                 continue
@@ -90,50 +115,23 @@ def orderDistribute(order: Order, vehicles: List[AGV], shelves: List[Shelf], tab
                 and nearest_vehicle.color_list[-1] == "y"
             ):  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
                 logging.info(f"vehicle {nearest_vehicle.id} assigned to {shelf} again")
-
-                available_workcells = [
-                    work_cell
-                    for table in tabls
-                    for work_cell in table.work_cells
-                    if not work_cell.occupied and (order.table is None or order.table == table.id)
-                ]
+                available_workcells = get_available_workcells(tabls, order)
                 if available_workcells:
-                    target_work_cell = min(
-                        available_workcells,
-                        key=lambda work_cell: manhattan_distance(
-                            (nearest_vehicle.x, nearest_vehicle.y), work_cell.loc  # type: ignore
-                        ),
-                    )
-                    # 分拣时间服从均值为10，标准差为2的正态分布
-                    tsort = max(1, int(np.random.normal(10, 2, 1)[0]))
-                    new_mission = DeliveryMission(
-                        order_id=order.id,
-                        sub_order_id=i,
-                        shelf=shelf,
-                        work_cell=target_work_cell,
-                        tsort=tsort,
-                    )
+                    target_work_cell = get_target_workcell(available_workcells, nearest_vehicle)
+                    new_mission = DeliveryMission(order.id, sub_order, shelf, target_work_cell)
                     nearest_vehicle.assign_delivery_mission(new_mission)
-                    order.table = target_work_cell.table_id
+                    order.table_id = target_work_cell.table_id
                     target_work_cell.occupied = True
                     nearest_vehicle.status = AgvStatus.TO_SELECT
                     logging.info(f"vehicle {nearest_vehicle.id} going for {target_work_cell}")
                 else:
                     nearest_vehicle.status = AgvStatus.WAITING_TO_SELECT
-                    nearest_vehicle.delivery_missions[-1].shelf.inplace = False
+                    nearest_vehicle.delivery_missions[-1].shelf.agv = nearest_vehicle
                     nearest_vehicle.point = len(nearest_vehicle.path) - 1
                     logging.info(f"vehicle {nearest_vehicle.id} waiting to select")
             else:
                 nearest_vehicle.status = AgvStatus.TO_SHELF
-                # 分拣时间服从均值为10，标准差为2的正态分布
-                tsort = max(1, int(np.random.normal(10, 2, 1)[0]))
-                new_mission = DeliveryMission(
-                    order_id=order.id,
-                    sub_order_id=i,
-                    shelf=shelf,
-                    work_cell=None,
-                    tsort=tsort,
-                )
+                new_mission = DeliveryMission(order.id, sub_order, shelf)
                 nearest_vehicle.assign_delivery_mission(new_mission)
                 logging.info(f"vehicle {nearest_vehicle.id} assigned {shelf}")
 

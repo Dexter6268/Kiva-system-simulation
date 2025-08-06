@@ -1,0 +1,3 @@
+1. [x] 检查orders_completed和orders_todo...
+2. [x] 测试是否还跑得通
+3. [ ] 重构agv类，加入still attribute?
