@@ -8,12 +8,14 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict, Optional
 from kiva_sim.states import AgvStatus, OrderStatus
-from kiva_sim.agv import AGV, init_agvs, Shelf
+from kiva_sim.agv import AGV, init_agvs, Shelf, get_target_workcell
 from kiva_sim.cbs import cbs_reserve
 from kiva_sim.visualization import create_animation
 from kiva_sim.maps import Map, MAP
+from kiva_sim.utlis import get_available_workcells
 from kiva_sim.tables import Table, init_tables
-from kiva_sim.orders import Order, init_orders, distribute_order, get_available_workcells, get_target_workcell
+from kiva_sim.orders import Order, init_orders, distribute_order
+from kiva_sim.models import ChargingStation
 
 
 SHELF_COORDS = MAP.shelf_coords
@@ -32,18 +34,15 @@ WORKER_COST = float(os.getenv("WORKER_COST", 34 / 3600))  # 分拣工人每秒�
 
 def init_simu(
     agv_num: int, order_num: int
-) -> Tuple[Map, List[Table], List[AGV], List[Shelf], List[dict], List[Order]]:
+) -> Tuple[Map, List[Table], List[AGV], List[Shelf], List[ChargingStation], List[Order]]:
     GLOBAL_AGV_MAP = deepcopy(MAP)  # map for all AGVs
-    tables = init_tables(TABLE_NUM)
+    tables = init_tables(TABLE_NUM, MAP)
     for table in tables:
         for cell in table.work_cells:
             GLOBAL_AGV_MAP[cell.loc] = 5  # 将工作台附近禁止通行
-    vehicles = init_agvs(agv_num)
-    shelves = [Shelf(i) for i in range(SHELF_NUM)]
-    charging_stations = [
-        {"id": i, "loc": CHARGING_STATION_COORD[i], "occupied": False} for i in range(CHARGING_STATION_NUM)
-    ]
-
+    vehicles = init_agvs(agv_num, MAP)
+    shelves = [Shelf(i, SHELF_COORDS[i]) for i in range(SHELF_NUM)]
+    charging_stations = [ChargingStation(i, CHARGING_STATION_COORD[i]) for i in range(CHARGING_STATION_NUM)]
     orders = init_orders(shelves=shelves, order_num=order_num)
     return GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders
 
@@ -311,7 +310,9 @@ def simulation(
                 if vehicle.point == len(vehicle.path) - 1:
                     if vehicle.status == AgvStatus.TO_SHELF:
                         logging.info(f"vehicle {vehicle.id} reached {last_delivery_mission.shelf} for the first time")
-                        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id])
+                        available_workcells = get_available_workcells(
+                            tables, orders[last_delivery_mission.order_id].table_id
+                        )
                         if available_workcells:
                             target_work_cell = get_target_workcell(available_workcells, vehicle)
                             orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
@@ -336,7 +337,7 @@ def simulation(
                             vehicle.status = AgvStatus.AVAILABLE
                             vehicle.point = 0
                         else:
-                            available_stations = [station for station in charging_stations if not station["occupied"]]
+                            available_stations = [station for station in charging_stations if not station.occupied]
                             if available_stations:
                                 vehicle.goto_charge(available_stations, charging_stations)
                             else:
@@ -363,10 +364,12 @@ def simulation(
                         if vehicle.battery == FULL_CHARGE:
                             logging.info(f"vehicle {vehicle.id} finished charging at position {vehicle.loc}")
                             vehicle.status = AgvStatus.AVAILABLE
-                            charging_stations[vehicle.charging_missions[-1].charging_station_id]["occupied"] = False
+                            charging_stations[vehicle.charging_missions[-1].charging_station_id].occupied = False
                             vehicle.point = 0
                     elif vehicle.status == AgvStatus.WAITING_TO_SELECT:
-                        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id])
+                        available_workcells = get_available_workcells(
+                            tables, orders[last_delivery_mission.order_id].table_id
+                        )
                         if available_workcells:
                             target_work_cell = get_target_workcell(available_workcells, vehicle)
                             orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
@@ -379,7 +382,7 @@ def simulation(
                             logging.info(f"vehicle {vehicle.id} waiting to select at position {vehicle.loc}")
                     elif vehicle.status == AgvStatus.WAITING_TO_CHARGE:
                         logging.info(f"vehicle {vehicle.id} waiting to charge at position {vehicle.loc}")
-                        available_stations = [station for station in charging_stations if not station["occupied"]]
+                        available_stations = [station for station in charging_stations if not station.occupied]
                         if available_stations:
                             vehicle.goto_charge(available_stations, charging_stations)
                     elif vehicle.status == AgvStatus.BACK_TO_START:

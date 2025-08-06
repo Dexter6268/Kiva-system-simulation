@@ -1,12 +1,10 @@
 import logging
 import numpy as np
-from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
-from dataclasses import dataclass
+from typing import List, Optional
 from kiva_sim.states import AgvStatus, OrderStatus
-from kiva_sim.tables import Table, WorkCell
-from kiva_sim.utlis import manhattan_distance
-from kiva_sim.agv import AGV, Shelf, DeliveryMission
+from kiva_sim.tables import Table
+from kiva_sim.utlis import manhattan_distance, get_available_workcells
+from kiva_sim.agv import AGV, Shelf, DeliveryMission, get_target_workcell
 from kiva_sim.models import SubOrder
 
 
@@ -33,21 +31,6 @@ class Order:
             return OrderStatus.TODO
         else:
             return OrderStatus.DOING
-
-
-def get_available_workcells(tables: List[Table], order: Order) -> List[WorkCell]:
-    if order.table_id is not None:
-        table = tables[order.table_id]
-        available_workcells = [work_cell for work_cell in table.work_cells if not work_cell.occupied]
-    else:
-        available_workcells = [
-            work_cell for table in tables for work_cell in table.work_cells if not work_cell.occupied
-        ]
-    return available_workcells
-
-
-def get_target_workcell(available_workcells: List[WorkCell], nearest_vehicle: AGV) -> WorkCell:
-    return min(available_workcells, key=lambda work_cell: manhattan_distance(nearest_vehicle.loc, work_cell.loc))
 
 
 def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 5, 1)[0])) -> List[Order]:
@@ -115,7 +98,7 @@ def distribute_order(order: Order, vehicles: List[AGV], shelves: List[Shelf], ta
                 and nearest_vehicle.color_list[-1] == "y"
             ):  # 如果这辆车分配的货架和刚完成的一单一样且不是刚充完电
                 logging.info(f"vehicle {nearest_vehicle.id} assigned to {shelf} again")
-                available_workcells = get_available_workcells(tabls, order)
+                available_workcells = get_available_workcells(tabls, order.table_id)
                 if available_workcells:
                     target_work_cell = get_target_workcell(available_workcells, nearest_vehicle)
                     new_mission = DeliveryMission(order.id, sub_order, shelf, target_work_cell)
@@ -144,3 +127,5 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d-%H:%M:%S",
         level=logging.DEBUG,
     )
+    a = np.random.normal(50, 5, 1)
+    print(a)

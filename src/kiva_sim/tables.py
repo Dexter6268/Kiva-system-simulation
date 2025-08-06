@@ -1,5 +1,5 @@
 from typing import List
-from kiva_sim.maps import MAP
+from kiva_sim.maps import Map
 
 
 class WorkCell:
@@ -28,16 +28,16 @@ class Table:
         return all(cell.occupied for cell in self.work_cells)
 
 
-def init_tables(table_num) -> List[Table]:
+def init_tables(table_num, map: Map) -> List[Table]:
     tables = []  # 工作台列表
-    table_coords = MAP.table_coords
+    table_coords = map.table_coords
     for i in range(table_num):
         table = Table(id=i, loc=table_coords[i])
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         work_cell_id = 0
         for dx, dy in directions:
             x, y = table.loc[0] + dx, table.loc[1] + dy
-            if MAP.is_valid(x, y):
+            if map.is_valid(x, y):
                 cell = WorkCell(id=work_cell_id, table_id=i, loc=(x, y))
                 table.work_cells.append(cell)
                 work_cell_id += 1
