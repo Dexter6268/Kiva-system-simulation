@@ -1,5 +1,6 @@
 import numpy as np
 import tkinter as tk
+from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from kiva_sim.maps import Map
@@ -108,16 +109,16 @@ def get_precise_block_size(ax):
 
 def create_animation(
     map: Map,
-    sim_info,
-    order_num,
-    cost_agv,
-    cost_charging_station,
-    cost_worker,
-    table_num,
-    order_complete_time,
-    interval,
+    sim_info: List[Dict],
+    order_num: int,
+    cost_agv: float,
+    cost_charging_station: float,
+    cost_worker: float,
+    table_num: int,
+    order_complete_time: int,
+    interval: int,
     SAVE_GIF=False,
-):
+) -> Tuple[FuncAnimation, int]:
     """
     功能：生成仿真动画
     :param map: 2d-np.array，栅格地图矩阵（0代表可通行，1代表货架，2代表工作台）
@@ -130,15 +131,13 @@ def create_animation(
     :param revenue: float，订单收益
     :return: ani
     """
-    if SAVE_GIF:
-        FONT_SIZE = 18
-    else:
-        FONT_SIZE = 12
+    FONT_SIZE = 18 if SAVE_GIF else 12
 
-    shelf_coords = map.shelf_coords
+    shelf_coords = np.array(map.shelf_coords)
     table_coords = map.table_coords
     charging_station_coords = map.charging_station_coords
     table_num = len(table_coords)
+    shelf_num = len(shelf_coords)
     charging_station_num = len(charging_station_coords)
 
     figsize = get_optimal_figsize(map.shape[::-1], save_gif=SAVE_GIF)
@@ -182,11 +181,11 @@ def create_animation(
         fontsize=FONT_SIZE,
     )
     # 货架
-    x_shelf = [coord[0] - 0.5 for coord in shelf_coords]
-    y_shelf = [coord[1] - 0.5 for coord in shelf_coords]
+    x_shelf = shelf_coords[:, 0] - 0.5
+    y_shelf = shelf_coords[:, 1] - 0.5
     sc_shelf = ax.scatter(y_shelf, x_shelf, s=BLOCK_SIZE, c="y", marker="s", label="shelf")
     # 货架id
-    for i in range(len(shelf_coords)):
+    for i in range(shelf_num):
         ax.text(y_shelf[i], x_shelf[i], str(i), ha="center", va="center", c="white", zorder=2, fontweight="bold")
 
     # AGV本体
@@ -251,9 +250,9 @@ def create_animation(
             new_block_size = get_precise_block_size(ax)
             new_direction_size = new_block_size * 0.25
             # 更新所有散点图的大小
-            sc_table.set_sizes([new_block_size] * len(table_x))
-            sc_charging.set_sizes([new_block_size] * len(charging_station_x))
-            sc_shelf.set_sizes([new_block_size] * len(x_shelf))
+            sc_table.set_sizes([new_block_size] * table_num)
+            sc_charging.set_sizes([new_block_size] * charging_station_num)
+            sc_shelf.set_sizes([new_block_size] * shelf_num)
             sc_position.set_sizes([new_block_size] * agv_num)
             sc_direction.set_sizes([new_direction_size] * agv_num)
             # 重新绘制
@@ -319,5 +318,13 @@ def create_animation(
         sc_direction.set_offsets(np.c_[y_direction, x_direction])  # 更新AGV方向
 
     ani = FuncAnimation(fig, update, frames=sim_info, interval=interval, repeat=False, cache_frame_data=False)  # type: ignore
-    fps = 1000 / interval
+    fps = 1000 // interval
     return ani, fps
+
+
+if __name__ == "__main__":
+    from kiva_sim.maps import load_map
+
+    map = load_map()
+    shelf_coords = map.shelf_coords
+    print(np.array(shelf_coords))

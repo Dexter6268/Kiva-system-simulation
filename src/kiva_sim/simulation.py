@@ -144,7 +144,9 @@ def update_frame_states(vehicle: AGV, agv_states: List[Dict], shelf_states: List
         shelf_states[last_delivery_mission.shelf.id] = shelf_color
 
 
-def get_simulation_results(animation_frames, revenue, agv_num, t, orders_completed_time):
+def get_simulation_results(
+    animation_frames: List[Dict], revenue: float, agv_num: int, t: int, orders_completed_time: int
+) -> Tuple[float, float, float, np.ndarray]:
     total_net_revenue = (
         revenue * 0.5
         - (AGV_COST * agv_num + CHARGING_STATION_COST * CHARGING_STATION_NUM) * t
@@ -185,9 +187,9 @@ def simulation(
     heat_map: bool = False,
     astar_max_iter: int = 1500,
     cbs_max_iter: int = 1000,
-    simu_max_iter: int = 1000,
+    simu_max_iter: int = 2000,
     random_seed: Optional[int] = None,
-):
+) -> np.ndarray:
     """Run warehouse automation simulation with AGVs and order fulfillment.
 
     Simulates a Kiva-style warehouse system where Automated Guided Vehicles (AGVs)
@@ -280,6 +282,7 @@ def simulation(
         for order in orders:
             distribute_order(order, vehicles, shelves, tables)
 
+        # 更新AGV路径
         for vehicle in vehicles:
             # 如果存在agv已分配任务且未启动或已完成任务
             if vehicle.needs_path_renewal:
@@ -310,17 +313,18 @@ def simulation(
                     v.updates_path(path)
                 break
 
+        # 更新AGV状态，更新动画帧
         shelf_states = ["y"] * SHELF_NUM  # 货架颜色信息
         for vehicle in vehicles:
             num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
             is_last_to_return = num_idle_vehicles >= agv_num - 1
             num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
             allowed_to_return = num_agv_back_to_start <= agv_num // 2
-
+            # 更新AGV状态
             revenue = vehicle.meta_updates(
                 tables, orders, GLOBAL_AGV_MAP, charging_stations, is_last_to_return, allowed_to_return, revenue
             )
-
+            # 更新动画帧
             update_frame_states(vehicle, agv_states, shelf_states)
 
         num_orders_completed = sum(order.status == OrderStatus.DONE for order in orders)
@@ -349,6 +353,8 @@ def simulation(
     assert orders_completed_time is not None, "Simulation ended without completing all orders"
     logging.info(f"{order_num} orders completed with {agv_num} agvs with {orders_completed_time} seconds")
 
+    # 计算各项指标
+    # -------------------------------------------------------------------------------------------------------
     revenue_per_hour, mean_utility, total_net_revenue, heat_map_data = get_simulation_results(
         animation_frames, revenue, agv_num, t, orders_completed_time
     )
