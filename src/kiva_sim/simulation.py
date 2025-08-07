@@ -144,6 +144,38 @@ def update_frame_states(vehicle: AGV, agv_states: List[Dict], shelf_states: List
         shelf_states[last_delivery_mission.shelf.id] = shelf_color
 
 
+def get_simulation_results(animation_frames, revenue, agv_num, t, orders_completed_time):
+    total_net_revenue = (
+        revenue * 0.5
+        - (AGV_COST * agv_num + CHARGING_STATION_COST * CHARGING_STATION_NUM) * t
+        - WORKER_COST * TABLE_NUM * orders_completed_time
+    )
+    revenue_per_hour = total_net_revenue / t * 3600
+
+    logging.info(
+        f"AGV_COST: {AGV_COST * agv_num * t:.2f}, CHARGING_STATION_COST: {CHARGING_STATION_COST * CHARGING_STATION_NUM * t:.2f}, WORKER_COST: {WORKER_COST * TABLE_NUM * orders_completed_time:.1f}, revenue: {revenue * 0.5:.1f}"
+    )
+    logging.info(f"total net revenue: {total_net_revenue:.1f}")
+    logging.info(f"revenue per hour: {revenue_per_hour:.1f}")
+    heat_map_data = np.zeros(MAP.shape)  # 热力图矩阵
+    utilized_time = [0] * agv_num  # 各AGV被利用的时间步数
+    for frame in animation_frames:
+        for id, agv_state in enumerate(frame["agv_states"]):
+            heat_map_data[agv_state["x"], agv_state["y"]] += 1
+            if agv_state["status"] in [
+                repr(AgvStatus.TO_SHELF),
+                repr(AgvStatus.TO_SELECT),
+                repr(AgvStatus.SELECTING),
+                repr(AgvStatus.RETURN_SHELF),
+            ]:
+                utilized_time[id] += 1
+    mean_utility = sum(utilized_time) / (t * agv_num)
+    for i, ut in enumerate(utilized_time):
+        logging.info(f"vehicle {i} utility {ut / t:.2%}")
+    logging.info(f"mean agv utility: {mean_utility:.2%}")
+    return revenue_per_hour, mean_utility, total_net_revenue, heat_map_data
+
+
 def simulation(
     agv_num: int,
     order_num: int,
@@ -236,16 +268,13 @@ def simulation(
     GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
     t = 1  # 时间步
     animation_frames = []  # 仿真信息，用来实现可视化
-    orders_completed_time = float("inf")
+    orders_completed_time = None
     simulation_complete = False  # 仿真是否完成
 
     time_start = time.time()
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while not simulation_complete:
-        if t > simu_max_iter:
-            logging.warning(f"Simulation reached maximum iterations {simu_max_iter}, break early.")
-            break
+    while not simulation_complete and t <= simu_max_iter:
         agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
         for order in orders:
@@ -304,59 +333,28 @@ def simulation(
         }
         animation_frames.append(frame_data)
 
-        if num_orders_completed == order_num:
-            orders_completed_time = min(orders_completed_time, t)
+        if orders_completed_time is None and num_orders_completed == order_num:
+            orders_completed_time = t
 
         all_waiting_at_start = all(vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles)
         simulation_complete = (num_orders_completed == order_num) and all_waiting_at_start
-        logging.info(
-            f"timestep {t}: number of completed orders: {num_orders_completed}, all_waiting_at_start: {all_waiting_at_start}"
-        )
+        logging.info(f"timestep {t}: number of completed orders: {num_orders_completed}")
         logging.info("-" * 80)
         t += 1
     # -------------------------------------------------------------------------------------------------------
-    time_end = time.time()
-    time_sum = time_end - time_start  # 计算的时间差为程序的执行时间，单位为秒/s
+    logging.info(f"run time: {time.time() - time_start}")  # 计算的时间差为程序的执行时间，单位为秒/s
+    if t > simu_max_iter:
+        logging.warning(f"Simulation reached maximum iterations {simu_max_iter}, break early.")
 
-    total_net_revenue = (
-        revenue * 0.5
-        - (AGV_COST * agv_num + CHARGING_STATION_COST * CHARGING_STATION_NUM) * t
-        - WORKER_COST * TABLE_NUM * orders_completed_time
-    )
-    revenue_per_hour = total_net_revenue / t * 3600
-    logging.info(f"run time: {time_sum}")
+    assert orders_completed_time is not None, "Simulation ended without completing all orders"
     logging.info(f"{order_num} orders completed with {agv_num} agvs with {orders_completed_time} seconds")
-    logging.info(
-        f"AGV_COST: {AGV_COST * agv_num * t:.2f}, CHARGING_STATION_COST: {CHARGING_STATION_COST * CHARGING_STATION_NUM * t:.2f}, WORKER_COST: {WORKER_COST * TABLE_NUM * orders_completed_time:.1f}, revenue: {revenue * 0.5:.1f}"
-    )
-    logging.info(f"total net revenue: {total_net_revenue:.1f}")
-    logging.info(f"revenue per hour: {revenue_per_hour:.1f}")
-    heat_map_data = np.zeros(MAP.shape)  # 热力图矩阵
-    utilized_time = [0] * agv_num  # 各AGV被利用的时间步数
-    for frame in animation_frames:
-        for id, agv_state in enumerate(frame["agv_states"]):
-            heat_map_data[agv_state["x"], agv_state["y"]] += 1
-            if agv_state["status"] in [
-                repr(AgvStatus.TO_SHELF),
-                repr(AgvStatus.TO_SELECT),
-                repr(AgvStatus.SELECTING),
-                repr(AgvStatus.RETURN_SHELF),
-            ]:
-                utilized_time[id] += 1
-    mean_utility = sum(utilized_time) / (t * agv_num)
-    for i, ut in enumerate(utilized_time):
-        logging.info(f"vehicle {i} utility {ut / t:.2%}")
-    logging.info(f"mean agv utility: {mean_utility:.2%}")
 
+    revenue_per_hour, mean_utility, total_net_revenue, heat_map_data = get_simulation_results(
+        animation_frames, revenue, agv_num, t, orders_completed_time
+    )
     if heat_map:
-        sns.set_context({"figure.figsize": (MAP.shape[1], MAP.shape[0])})
-        sns.heatmap(
-            data=heat_map_data,
-            square=True,
-            cmap="RdBu_r",
-            linewidths=0.3,
-            cbar_kws={"shrink": 0.8},
-        )
+        sns.set_context({"figure.figsize": MAP.shape[::-1]})
+        sns.heatmap(data=heat_map_data, square=True, cmap="RdBu_r", linewidths=0.3, cbar_kws={"shrink": 0.8})
         save_folder = ROOT_PATH / "figures"
         save_folder.mkdir(parents=True, exist_ok=True)
         save_path = save_folder / f"heat_map_{order_num}_orders_{agv_num}_AGVs.png"
@@ -384,7 +382,6 @@ def simulation(
         plt.show()
     return np.array(
         [
-            agv_num,
             order_num,
             orders_completed_time,  # 订单完成时间
             revenue_per_hour,  # 每小时的净收益
