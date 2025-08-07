@@ -72,13 +72,13 @@ from kiva_sim.simulation import simulation
 
 if __name__ == "__main__":
     logging.info("=== Simulation Starting ===")
-    order_num = 10  # 订单数量
+    order_num = 5  # 订单数量
     logging.info(f"Running simulation with {order_num} orders")
     simulation(
         agv_num=12,
         order_num=order_num,
         interval=200,
-        show=False,
+        show=True,
         save_fig=False,
         heat_map=False,
         random_seed=100,

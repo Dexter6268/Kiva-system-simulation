@@ -337,16 +337,16 @@ def simulation(
         for id, agv_state in enumerate(frame["agv_states"]):
             heat_map_data[agv_state["x"], agv_state["y"]] += 1
             if agv_state["status"] in [
-                AgvStatus.TO_SHELF,
-                AgvStatus.TO_SELECT,
-                AgvStatus.SELECTING,
-                AgvStatus.RETURN_SHELF,
+                repr(AgvStatus.TO_SHELF),
+                repr(AgvStatus.TO_SELECT),
+                repr(AgvStatus.SELECTING),
+                repr(AgvStatus.RETURN_SHELF),
             ]:
                 utilized_time[id] += 1
     mean_utility = sum(utilized_time) / (t * agv_num)
     for i, ut in enumerate(utilized_time):
         logging.info(f"vehicle {i} utility {ut / t:.2%}")
-    logging.info(f"mean agv utility: {mean_utility * 100:.2%}")
+    logging.info(f"mean agv utility: {mean_utility:.2%}")
 
     if heat_map:
         sns.set_context({"figure.figsize": (MAP.shape[1], MAP.shape[0])})
