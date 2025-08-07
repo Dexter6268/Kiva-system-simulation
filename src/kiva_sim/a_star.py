@@ -274,6 +274,10 @@ def astar(
             logging.warning("A* exceeded maximum iterations")
             return None
 
+        if not open_list:
+            logging.warning("A* open list is empty, no path found")
+            return None
+
         cur = heapq.heappop(open_list)  # pop the node with the smallest f value
 
         logging.debug(f"Current node: {cur}")
