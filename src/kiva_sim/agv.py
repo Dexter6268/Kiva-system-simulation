@@ -175,13 +175,44 @@ class AGV:
         color = "y" if self.status in [AgvStatus.TO_SELECT, AgvStatus.RETURN_SHELF] else "k"
         self.color_list = [color] * len(new_path)
 
+    def meta_updates(
+        self,
+        tables,
+        orders,
+        GLOBAL_AGV_MAP,
+        charging_stations,
+        is_last_to_return,
+        allowed_to_return,
+        revenue,
+    ):
+        num_suborders_unassigned = sum(
+            sub_order.status == OrderStatus.TODO for order in orders for sub_order in order.sub_orders
+        )
+        # 如果AGV空闲且没有剩余的未指派订单，则令AGV返回起点
+        if self.status == AgvStatus.AVAILABLE and num_suborders_unassigned == 0:
+            if self.loc != self.start:
+                # 分批返回起点（如果当前处于返程的AGV超过总数的一半则继续等待），防止一次性返回车数过多，造成拥堵s)
+                if allowed_to_return:
+                    logging.info(f"vehicle {self.id} back to start")
+                    self.status = AgvStatus.BACK_TO_START
+            else:
+                self.status = AgvStatus.WAITING_AT_START
+                GLOBAL_AGV_MAP[self.start] = 4
+        elif self.status not in (AgvStatus.AVAILABLE, AgvStatus.WAITING_AT_START):
+            self.move()
+            # 当AGV完成一个阶段的任务，更新AGV对象状态参数
+            if self.point == len(self.path) - 1:
+                revenue = self.updates_status(
+                    tables, orders, GLOBAL_AGV_MAP, charging_stations, is_last_to_return, revenue
+                )
+
     def updates_status(
         self,
         tables: List[Table],
         orders,
         global_agv_map: Map,
         charging_stations: List[ChargingStation],
-        condition: bool,
+        is_last_to_return: bool,
         revenue: float,
     ) -> float:
         """Update the AGV's status."""
@@ -195,7 +226,7 @@ class AGV:
             AgvStatus.CHARGING: (self._handle_charging_status, [charging_stations, revenue]),
             AgvStatus.WAITING_TO_SELECT: (self._handle_waiting_to_select_status, [tables, orders, revenue]),
             AgvStatus.WAITING_TO_CHARGE: (self._handle_waiting_to_charge_status, [charging_stations, revenue]),
-            AgvStatus.BACK_TO_START: (self._handle_back_to_start_status, [global_agv_map, condition, revenue]),
+            AgvStatus.BACK_TO_START: (self._handle_back_to_start_status, [global_agv_map, is_last_to_return, revenue]),
         }
         config = status_config.get(self.status)
         if config:
@@ -305,10 +336,10 @@ class AGV:
             self.goto_charge(available_stations)
         return revenue
 
-    def _handle_back_to_start_status(self, global_agv_map, condition, revenue):
+    def _handle_back_to_start_status(self, global_agv_map, is_last_to_return, revenue):
         """Handle BACK_TO_START status transition."""
         global_agv_map[self.start] = 4
-        if condition:
+        if is_last_to_return:
             self.status = AgvStatus.WAITING_AT_START
             return revenue
 

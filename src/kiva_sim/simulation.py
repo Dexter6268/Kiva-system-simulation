@@ -280,31 +280,14 @@ def simulation(
 
         shelf_states = ["y"] * SHELF_NUM  # 货架颜色信息
         for vehicle in vehicles:
+            num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
+            is_last_to_return = num_idle_vehicles >= agv_num - 1
+            num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
+            allowed_to_return = num_agv_back_to_start <= agv_num // 2
 
-            num_suborders_unassigned = sum(
-                sub_order.status == OrderStatus.TODO for order in orders for sub_order in order.sub_orders
+            vehicle.meta_updates(
+                tables, orders, GLOBAL_AGV_MAP, charging_stations, is_last_to_return, allowed_to_return, revenue
             )
-
-            # 如果AGV空闲且没有剩余的未指派订单，则令AGV返回起点
-            if vehicle.status == AgvStatus.AVAILABLE and num_suborders_unassigned == 0:
-                if vehicle.loc != vehicle.start:
-                    # 分批返回起点（如果当前处于返程的AGV超过总数的一半则继续等待），防止一次性返回车数过多，造成拥堵
-                    num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
-                    if num_agv_back_to_start <= agv_num // 2:
-                        logging.info(f"vehicle {vehicle.id} back to start")
-                        vehicle.status = AgvStatus.BACK_TO_START
-                else:
-                    vehicle.status = AgvStatus.WAITING_AT_START
-                    GLOBAL_AGV_MAP[vehicle.start] = 4
-            elif vehicle.status not in (AgvStatus.AVAILABLE, AgvStatus.WAITING_AT_START):
-                vehicle.move()
-                # 当AGV完成一个阶段的任务，更新AGV对象状态参数
-                if vehicle.point == len(vehicle.path) - 1:
-                    num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
-                    condition = num_idle_vehicles >= agv_num - 1
-                    revenue = vehicle.updates_status(
-                        tables, orders, GLOBAL_AGV_MAP, charging_stations, condition, revenue
-                    )
 
             update_frame_states(vehicle, agv_states, shelf_states)
 
