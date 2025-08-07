@@ -121,6 +121,26 @@ def extract_path_planning_data(
     return maps, starts, ends, root_paths, directions
 
 
+def update_frame_states(vehicle: AGV, agv_states: List[Dict], shelf_states: List[str]) -> None:
+    """Record the states of AGVs and shelves for visualization."""
+    agv_states.append(
+        {
+            "id": vehicle.id,
+            "x": vehicle.loc[0],
+            "y": vehicle.loc[1],
+            "direction": repr(vehicle.direction),
+            "color": vehicle.color,
+            "status": repr(vehicle.status),
+            "battery": f"{vehicle.battery / FULL_CHARGE:.1%}",
+            "target": vehicle.target,
+        }
+    )
+    if vehicle.delivery_missions:
+        shelf_color = "w" if vehicle.color == "y" else "y"
+        last_delivery_mission = vehicle.delivery_missions[-1]
+        shelf_states[last_delivery_mission.shelf.id] = shelf_color
+
+
 def simulation(
     agv_num: int,
     order_num: int,
@@ -211,20 +231,23 @@ def simulation(
     # -------------------------------------------------------------------------------------------------------
     revenue = 0  # 订单完成收益
     GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
+    all_orders = set(orders)
+    completed_orders = set()
     t = 0  # 时间步
     animation_frames = []  # 仿真信息，用来实现可视化
     orders_completed_time = float("inf")
-    tbreak = -1
+    simulation_complete = False  # 仿真是否完成
 
     time_start = time.time()
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while t < simu_max_iter:
+    while not simulation_complete and t < simu_max_iter:
         agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
-        for order in orders:
+        unfinished_orders = all_orders - completed_orders
+        for order in unfinished_orders:
             distribute_order(order, vehicles, shelves, tables)
-            logging.debug(f"{order}")
+
         for vehicle in vehicles:
             # 如果存在agv已分配任务且未启动或已完成任务
             if vehicle.needs_path_renewal:
@@ -255,21 +278,9 @@ def simulation(
                     v.updates_path(path)
                 break
 
-        shelf_info = ["y"] * SHELF_NUM  # 货架颜色信息
+        shelf_states = ["y"] * SHELF_NUM  # 货架颜色信息
         for vehicle in vehicles:
-            # 录入AGV信息
-            agv_states.append(
-                {
-                    "id": vehicle.id,
-                    "x": vehicle.loc[0],
-                    "y": vehicle.loc[1],
-                    "direction": repr(vehicle.direction),
-                    "color": vehicle.color,
-                    "status": repr(vehicle.status),
-                    "battery": f"{vehicle.battery / FULL_CHARGE: .1%}",
-                    "target": vehicle.target,
-                }
-            )
+
             num_suborders_unassigned = sum(
                 sub_order.status == OrderStatus.TODO for order in orders for sub_order in order.sub_orders
             )
@@ -287,10 +298,6 @@ def simulation(
                     GLOBAL_AGV_MAP[vehicle.start] = 4
             elif vehicle.status not in (AgvStatus.AVAILABLE, AgvStatus.WAITING_AT_START):
                 vehicle.move()
-                shelf_color = "w" if vehicle.color == "y" else "y"
-                last_delivery_mission = vehicle.delivery_missions[-1]
-                shelf_info[last_delivery_mission.shelf.id] = shelf_color
-
                 # 当AGV完成一个阶段的任务，更新AGV对象状态参数
                 if vehicle.point == len(vehicle.path) - 1:
                     num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
@@ -299,28 +306,27 @@ def simulation(
                         tables, orders, GLOBAL_AGV_MAP, charging_stations, condition, revenue
                     )
 
-        num_orders_completed = sum(order.status == OrderStatus.DONE for order in orders)
+            update_frame_states(vehicle, agv_states, shelf_states)
+
+        completed_orders = set(order for order in orders if order.status == OrderStatus.DONE)
+        num_orders_completed = len(completed_orders)
 
         frame_data = {
             "agv_states": agv_states,
-            "shelf_states": shelf_info,
+            "shelf_states": shelf_states,
             "orders_completed": num_orders_completed,
             "t": t,
             "revenue": revenue,
         }
         animation_frames.append(frame_data)
-
-        if t == tbreak:
-            break
-        logging.info(f"orders_completed: {num_orders_completed}")
+        logging.info(f"orders_completed: {completed_orders}")
         logging.info("-" * 80)
         if num_orders_completed == order_num:
             orders_completed_time = min(orders_completed_time, t)
 
-        if num_orders_completed == order_num and all(
+        simulation_complete = (num_orders_completed == order_num) and all(
             vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles
-        ):
-            tbreak = t + 1
+        )
         t += 1
     # -------------------------------------------------------------------------------------------------------
     time_end = time.time()
@@ -369,9 +375,6 @@ def simulation(
         plt.show()
 
     if show:
-        # 货架颜色信息由于主循环内更新先后顺序原因出现1时间步错位，在此矫正。
-        for i in range(len(animation_frames) - 1, 0, -1):
-            animation_frames[i]["shelf_states"] = animation_frames[i - 1]["shelf_states"]
         ani, fps = create_animation(
             MAP,
             animation_frames,
