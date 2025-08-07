@@ -7,11 +7,10 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict, Optional
 from kiva_sim.states import AgvStatus, OrderStatus
-from kiva_sim.agv import AGV, init_agvs, Shelf, get_target_workcell
+from kiva_sim.agv import AGV, init_agvs, Shelf
 from kiva_sim.cbs import cbs_reserve
 from kiva_sim.visualization import create_animation
 from kiva_sim.maps import Map, MAP
-from kiva_sim.utlis import get_available_workcells
 from kiva_sim.tables import Table, init_tables
 from kiva_sim.orders import Order, init_orders, distribute_order
 from kiva_sim.models import ChargingStation
@@ -217,12 +216,10 @@ def simulation(
     orders_completed_time = float("inf")
     tbreak = -1
 
-    iteration = 0
     time_start = time.time()
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while iteration < simu_max_iter:
-        iteration += 1
+    while t < simu_max_iter:
         agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
         for order in orders:

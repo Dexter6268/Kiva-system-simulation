@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import logging
 from pathlib import Path
 from typing import List, Tuple, cast
 
@@ -79,6 +80,8 @@ map_name = os.environ.get("MAP_NAME", "map0.xlsx")
 map_path = root_path / "maps" / map_name
 if not map_path.exists():
     raise FileNotFoundError(f"Map file {map_name} not found in {root_path / 'maps'}.")
+
+logging.info(f"Loading map from {map_path}")
 df = pd.read_excel(map_path).fillna(0)
 MAP = Map(df.iloc[0:-1, 1:-1].values)
 
