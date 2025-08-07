@@ -205,11 +205,12 @@ class AGV:
 
     def _handle_to_shelf_status(self, tables, orders, revenue):
         last_delivery_mission = self.delivery_missions[-1]
-        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
+        last_order = orders[last_delivery_mission.order_id]
+        available_workcells = get_available_workcells(tables, last_order.table_id)
         logging.info(f"vehicle {self.id} reached {last_delivery_mission.shelf} for the first time")
         if available_workcells:
             target_work_cell = get_target_workcell(available_workcells, self)
-            orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
+            last_order.table_id = target_work_cell.table_id
             last_delivery_mission.work_cell = target_work_cell
 
             target_work_cell.occupied = True
@@ -282,12 +283,13 @@ class AGV:
     def _handle_waiting_to_select_status(self, tables, orders, revenue):
         """Handle WAITING_TO_SELECT status transition."""
         last_delivery_mission = self.delivery_missions[-1]
-        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
+        last_order = orders[last_delivery_mission.order_id]
+        available_workcells = get_available_workcells(tables, last_order.table_id)
         if not available_workcells:
             logging.info(f"vehicle {self.id} waiting to select at position {self.loc}")
             return revenue
         target_work_cell = get_target_workcell(available_workcells, self)
-        orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
+        last_order.table_id = target_work_cell.table_id
         last_delivery_mission.work_cell = target_work_cell
         target_work_cell.occupied = True
         self.status = AgvStatus.TO_SELECT

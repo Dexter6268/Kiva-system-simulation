@@ -83,7 +83,6 @@ def distribute_order(order: Order, vehicles: List[AGV], shelves: List[Shelf], ta
         shelves: List of all shelves in the system.
         tabls: List of tables containing work cells for order processing.
     """
-
     for sub_order in order.sub_orders:
         # 如果该货架尚未被分配且仍然在原位（没有被其它AGV运走）
         shelf = shelves[sub_order.shelf_id]

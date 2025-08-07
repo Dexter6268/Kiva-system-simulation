@@ -274,12 +274,11 @@ def simulation(
                 sub_order.status == OrderStatus.TODO for order in orders for sub_order in order.sub_orders
             )
 
-            num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
-
             # 如果AGV空闲且没有剩余的未指派订单，则令AGV返回起点
             if vehicle.status == AgvStatus.AVAILABLE and num_suborders_unassigned == 0:
                 if vehicle.loc != vehicle.start:
                     # 分批返回起点（如果当前处于返程的AGV超过总数的一半则继续等待），防止一次性返回车数过多，造成拥堵
+                    num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
                     if num_agv_back_to_start <= agv_num // 2:
                         logging.info(f"vehicle {vehicle.id} back to start")
                         vehicle.status = AgvStatus.BACK_TO_START
@@ -313,13 +312,15 @@ def simulation(
 
         if t == tbreak:
             break
-        num_idle_vehicles = sum(vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles)
         logging.info(f"orders_completed: {num_orders_completed}")
         logging.info("-" * 80)
         if num_orders_completed == order_num:
             orders_completed_time = min(orders_completed_time, t)
-            if num_idle_vehicles == agv_num:
-                tbreak = t + 1
+
+        if num_orders_completed == order_num and all(
+            vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles
+        ):
+            tbreak = t + 1
         t += 1
     # -------------------------------------------------------------------------------------------------------
     time_end = time.time()
