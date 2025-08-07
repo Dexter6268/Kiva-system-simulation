@@ -1,8 +1,10 @@
+from json import load
 import os
 import time
 import logging
 import numpy as np
 import seaborn as sns
+from pathlib import Path
 from copy import deepcopy
 import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict, Optional
@@ -10,17 +12,18 @@ from kiva_sim.states import AgvStatus, OrderStatus
 from kiva_sim.agv import AGV, init_agvs, Shelf
 from kiva_sim.cbs import cbs_reserve
 from kiva_sim.visualization import create_animation
-from kiva_sim.maps import Map, MAP
+from kiva_sim.maps import Map, load_map
 from kiva_sim.tables import Table, init_tables
 from kiva_sim.orders import Order, init_orders, distribute_order
 from kiva_sim.models import ChargingStation
 
-
+MAP = load_map()
+ROOT_PATH = Path(__file__).resolve().parent.parent.parent
 SHELF_COORDS = MAP.shelf_coords
-CHARGING_STATION_COORD = MAP.charging_station_coords
+CHARGING_STATION_COORDS = MAP.charging_station_coords
 TABLE_NUM = len(MAP.table_coords)
 SHELF_NUM = len(SHELF_COORDS)
-CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
+CHARGING_STATION_NUM = len(CHARGING_STATION_COORDS)
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", 3600))
 LIFTING_TIME = int(os.getenv("LIFTING_TIME", 4))  # AGV抬起及放下货架时长
@@ -40,7 +43,7 @@ def init_simu(
             GLOBAL_AGV_MAP[cell.loc] = 5  # 将工作台附近禁止通行
     vehicles = init_agvs(agv_num, MAP)
     shelves = [Shelf(i, SHELF_COORDS[i]) for i in range(SHELF_NUM)]
-    charging_stations = [ChargingStation(i, CHARGING_STATION_COORD[i]) for i in range(CHARGING_STATION_NUM)]
+    charging_stations = [ChargingStation(i, CHARGING_STATION_COORDS[i]) for i in range(CHARGING_STATION_NUM)]
     orders = init_orders(shelves=shelves, order_num=order_num)
     return GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders
 
@@ -150,7 +153,7 @@ def simulation(
     heat_map: bool = False,
     astar_max_iter: int = 1500,
     cbs_max_iter: int = 1000,
-    simu_max_iter: int = 500,
+    simu_max_iter: int = 1000,
     random_seed: Optional[int] = None,
 ):
     """Run warehouse automation simulation with AGVs and order fulfillment.
@@ -233,7 +236,7 @@ def simulation(
     GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
     all_orders = set(orders)
     completed_orders = set()
-    t = 0  # 时间步
+    t = 1  # 时间步
     animation_frames = []  # 仿真信息，用来实现可视化
     orders_completed_time = float("inf")
     simulation_complete = False  # 仿真是否完成
@@ -241,7 +244,10 @@ def simulation(
     time_start = time.time()
     # main loop
     # -------------------------------------------------------------------------------------------------------
-    while not simulation_complete and t < simu_max_iter:
+    while not simulation_complete:
+        if t > simu_max_iter:
+            logging.warning(f"Simulation reached maximum iterations {simu_max_iter}, break early.")
+            break
         agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
         unfinished_orders = all_orders - completed_orders
@@ -302,14 +308,16 @@ def simulation(
             "revenue": revenue,
         }
         animation_frames.append(frame_data)
-        logging.info(f"orders_completed: {completed_orders}")
-        logging.info("-" * 80)
+
         if num_orders_completed == order_num:
             orders_completed_time = min(orders_completed_time, t)
 
-        simulation_complete = (num_orders_completed == order_num) and all(
-            vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles
+        all_waiting_at_start = all(vehicle.status == AgvStatus.WAITING_AT_START for vehicle in vehicles)
+        simulation_complete = (num_orders_completed == order_num) and all_waiting_at_start
+        logging.info(
+            f"timestep {t}: number of completed orders: {num_orders_completed}, all_waiting_at_start: {all_waiting_at_start}"
         )
+        logging.info("-" * 80)
         t += 1
     # -------------------------------------------------------------------------------------------------------
     time_end = time.time()
@@ -354,7 +362,10 @@ def simulation(
             linewidths=0.3,
             cbar_kws={"shrink": 0.8},
         )
-        plt.savefig(f"heat_map_{order_num}_orders_{agv_num}_AGVs.png", dpi=300)
+        save_folder = ROOT_PATH / "figures"
+        save_folder.mkdir(parents=True, exist_ok=True)
+        save_path = save_folder / f"heat_map_{order_num}_orders_{agv_num}_AGVs.png"
+        plt.savefig(save_path, dpi=300)
         plt.show()
 
     if show:
@@ -371,11 +382,10 @@ def simulation(
             SAVE_GIF=save_fig,
         )
         if save_fig:
-            ani.save(
-                f"gifs/map1_{order_num}_orders_{agv_num}_AGVs.gif",
-                fps=fps,
-                writer="pillow",
-            )
+            save_folder = ROOT_PATH / "gifs"
+            save_folder.mkdir(parents=True, exist_ok=True)
+            save_path = save_folder / "{order_num}_orders_{agv_num}_AGVs.gif"
+            ani.save(save_path, fps=fps, writer="pillow")
         plt.show()
     return np.array(
         [
