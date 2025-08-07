@@ -1,9 +1,9 @@
 from __future__ import annotations
-from copy import deepcopy
 import os
 import logging
 import numpy as np
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 from kiva_sim.states import AgvStatus, Direction, OrderStatus
 from kiva_sim.maps import Map
@@ -26,7 +26,7 @@ class DeliveryMission:
     shelf: Shelf
     work_cell: Optional[WorkCell] = None
     # 分拣时间服从均值为10，标准差为2的正态分布
-    tsort: Optional[int] = max(1, int(np.random.normal(10, 2, 1)[0]))
+    tsort: Optional[int] = field(default_factory=lambda: max(1, int(np.random.normal(10, 2, 1)[0])))
 
 
 @dataclass
@@ -379,4 +379,14 @@ def init_agvs(agv_num: int, map: Map) -> List[AGV]:
 
 
 if __name__ == "__main__":
-    pass
+    sub_order = SubOrder(id=1, shelf_id=1)
+    shelf = Shelf(id=1, loc=(0, 0))
+    mission1 = DeliveryMission(1, sub_order, shelf)
+    import time
+
+    time.sleep(1)  # 模拟分拣时间
+    mission2 = DeliveryMission(2, sub_order, shelf)
+    mission3 = DeliveryMission(3, sub_order, shelf)
+    print(f"Mission 1 tsort: {mission1.tsort}")  # 例如: 8
+    print(f"Mission 2 tsort: {mission2.tsort}")  # 例如: 12
+    print(f"Mission 3 tsort: {mission3.tsort}")  # 例如: 9
