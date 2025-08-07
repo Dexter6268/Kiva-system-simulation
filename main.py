@@ -4,6 +4,9 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from kiva_sim.orders import init_orders, Order
 from kiva_sim.simulation import simulation
@@ -67,6 +70,7 @@ if __name__ == "__main__":
         datefmt="%Y-%m-%d-%H:%M:%S",
         level=logging.INFO,
     )
+
     order_num = 2  # 订单数量
 
     simulation(

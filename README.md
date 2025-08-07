@@ -25,11 +25,63 @@ The order completion process is as follows:
 
 ![AGV_status_diagram](pics/AGV_status_diagram.png)
 
-As shown in the figure, all AGVs are in the available state at the start of the simulation. After the nearest order is assigned, they enter the to shelf state (heading to the shelf). Upon reaching the shelf and lifting it, they check if the target workstation is occupied or reserved. If occupied, they enter the waiting to select state (waiting to sort). If not occupied, they enter the to select state (heading to sort). Upon reaching the workstation, they enter the selecting state (sorting). After sorting, they enter the return shelf state (returning the shelf). Upon reaching the shelf position, they check if the battery is sufficient. If below the threshold, they check if there is an available charging station. If not, they enter the waiting to charge state (waiting to charge). If there is an available charging station, they enter the to charge state (heading to charge). Upon reaching the charging station, they enter the charging state (charging). If the battery is sufficient, they re-enter the available state and continue to check for new orders. If there are no new orders, they check if the AGV is already at the starting point. If not, they enter the back to start state (returning to the starting point). Upon reaching the starting point, they check if the AGV is the last one to reach the starting point. If not, they enter the arrived at start state (this state causes all AGVs in motion to re-plan their paths to avoid passing through the starting point). If it is the last one, it directly enters the waiting at start state. When all AGVs enter the waiting at start state, the simulation ends. Additionally, an AGV that did not charge after completing the previous order will check if the target shelf of the new order is the same as the previous one. If so, it checks if the target workstation is available and enters the waiting to select or to select state.
+### Initial State
+All AGVs begin in the `AVAILABLE` state at simulation startup, ready to receive order assignments.
+
+### Order Assignment and Shelf Retrieval
+1. **Order Assignment**: When an order is issued, the nearest available AGV is assigned and transitions to `TO_SHELF` state
+2. **Shelf Retrieval**: AGV navigates to the designated shelf location and lifts it
+
+### Workstation Assignment and Selection
+3. **Workstation Check**: Upon reaching the shelf, the AGV evaluates target workstation availability:
+   - **If workstation is occupied**: Transitions to `WAITING_TO_SELECT` state (waiting for workstation availability)
+   - **If workstation is available**: Transitions to `TO_SELECT` state (heading to workstation)
+
+4. **Sorting Process**: 
+   - AGV reaches workstation and enters `SELECTING` state
+   - Performs sorting operations for the specified duration
+   - Upon completion, transitions to `RETURN_SHELF` state
+
+### Shelf Return and Battery Management
+5. **Shelf Return**: AGV transports shelf back to original position
+6. **Battery Assessment**: Upon reaching shelf location, AGV checks battery level:
+   - **If battery is sufficient**: Returns to `AVAILABLE` state for new orders
+   - **If battery is below threshold**: Initiates charging sequence
+
+### Charging Process
+7. **Charging Station Assignment**:
+   - **If charging station available**: Transitions to `TO_CHARGE` state (heading to charging station)
+   - **If no station available**: Enters `WAITING_TO_CHARGE` state (waiting for available station)
+
+8. **Charging Operations**: 
+   - AGV reaches charging station and enters `CHARGING` state
+   - Upon full charge, returns to `AVAILABLE` state
+
+### End-of-Simulation Protocol
+9. **Return to Start**: When no new orders are available:
+   - **If not at starting point**: Transitions to `BACK_TO_START` state
+   - **Upon reaching start**: 
+     - If not the last AGV: Enters `ARRIVED_AT_START` state (triggers path re-planning for other AGVs)
+     - If last AGV: Directly enters `WAITING_AT_START` state
+
+10. **Simulation Termination**: When all AGVs reach `WAITING_AT_START` state, the simulation concludes
+
+### Special Case: Consecutive Orders
+For AGVs that complete an order without charging, an optimization check occurs:
+- **If new order targets the same shelf**: AGV remains at shelf location
+- **Workstation evaluation**: 
+  - Available workstation → Direct transition to `TO_SELECT`
+  - Occupied workstation → Transition to `WAITING_TO_SELECT`
 
 # Required Libraries
 
 To install the required libraries, run the following command:
+
+```bash
+pip install -e .
+```
+
+Alternatively, you can install the libraries listed in `requirements.txt` using the command below:
 
 ```bash
 pip install -r requirements.txt
@@ -37,18 +89,34 @@ pip install -r requirements.txt
 
 # Directory Structure
 
+# Directory Structure
+
 ```
-├── README.md            
-├── pics          
-├── src                       
-│   ├── a_star.py           
-│   ├── agv.py                
-│   ├── cbs.py                 
-│   ├── mapAndOrder.py 
-│   ├── main.py        
-│   ├── visualization.py      
-│   └── simulation.py                            
-└── maps          
+├── README.md                   # Project documentation
+├── LICENSE                     # License file
+├── main.py                     # Main execution script
+├── pyproject.toml              # Project configuration
+├── requirements.txt            # Python dependencies
+├── todo.md                     # Project todo list
+├── .gitignore                  # Git ignore rules
+├── .env                        # Environment variables
+├── src/                        # Source code directory
+│   ├── kiva_sim/               # Main simulation package
+│   │   ├── __init__.py
+│   │   ├── agv.py              # AGV class and logic
+│   │   ├── a_star.py           # A* pathfinding algorithm
+│   │   ├── cbs.py              # Conflict-Based Search algorithm
+│   │   ├── maps.py             # Map class and logic
+│   │   ├── models.py           # Basic data models
+│   │   ├── orders.py           # Order class and logic
+│   │   ├── simulation.py       # Main simulation logic
+│   │   ├── tables.py           # Table class and logic
+│   │   ├── utils.py            # Utility functions
+│   │   └── visualization.py    # Visualization components
+├── pics/                       # Documentation images
+├── gifs/                       # Demo animations
+├── logs/                       # Simulation logs
+└── experiment results/         # Experimental data and results
 ```
 
 # Usage Instructions
