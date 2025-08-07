@@ -18,10 +18,9 @@ from kiva_sim.models import ChargingStation
 
 
 SHELF_COORDS = MAP.shelf_coords
-TABLE_COORDS = MAP.table_coords
 CHARGING_STATION_COORD = MAP.charging_station_coords
+TABLE_NUM = len(MAP.table_coords)
 SHELF_NUM = len(SHELF_COORDS)
-TABLE_NUM = len(TABLE_COORDS)
 CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
 
 FULL_CHARGE = int(os.getenv("FULL_CHARGE", 3600))
@@ -34,6 +33,7 @@ WORKER_COST = float(os.getenv("WORKER_COST", 34 / 3600))  # 分拣工人每秒�
 def init_simu(
     agv_num: int, order_num: int
 ) -> Tuple[Map, List[Table], List[AGV], List[Shelf], List[ChargingStation], List[Order]]:
+    """Initialize the simulation environment with AGVs, orders, and other components."""
     GLOBAL_AGV_MAP = deepcopy(MAP)  # map for all AGVs
     tables = init_tables(TABLE_NUM, MAP)
     for table in tables:
@@ -261,16 +261,6 @@ def simulation(
         shelf_info = ["y"] * SHELF_NUM  # 货架颜色信息
         for vehicle in vehicles:
             # 录入AGV信息
-            target = "None"
-            if vehicle.status in [AgvStatus.TO_SHELF, AgvStatus.RETURN_SHELF]:
-                last_delivery_mission = vehicle.delivery_missions[-1]
-                target = f"shelf {last_delivery_mission.shelf.id}"
-            elif vehicle.status == AgvStatus.TO_SELECT:
-                last_delivery_mission = vehicle.delivery_missions[-1]
-                assert last_delivery_mission.work_cell is not None
-                target = f"table {last_delivery_mission.work_cell.table_id}"
-            elif vehicle.status == AgvStatus.TO_CHARGE:
-                target = f"charging station {vehicle.charging_missions[-1].charging_station_id}"
             agv_info.append(
                 {
                     "id": vehicle.id,
@@ -280,7 +270,7 @@ def simulation(
                     "color": vehicle.color,
                     "status": repr(vehicle.status),
                     "battery": f"{vehicle.battery / FULL_CHARGE: .1%}",
-                    "target": target,
+                    "target": vehicle.target,
                 }
             )
             num_suborders_unassigned = sum(

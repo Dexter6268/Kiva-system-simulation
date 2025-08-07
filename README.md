@@ -89,8 +89,6 @@ pip install -r requirements.txt
 
 # Directory Structure
 
-# Directory Structure
-
 ```
 ├── README.md                   # Project documentation
 ├── LICENSE                     # License file

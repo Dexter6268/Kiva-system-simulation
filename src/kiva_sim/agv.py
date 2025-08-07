@@ -315,6 +315,26 @@ class AGV:
         self.point = 0
         return revenue
 
+    @property
+    def target(self) -> str:
+        """Get the target description for a vehicle based on its current status."""
+        status_target_mapping = {
+            AgvStatus.TO_SHELF: lambda v: f"shelf {v.delivery_missions[-1].shelf.id}",
+            AgvStatus.RETURN_SHELF: lambda v: f"shelf {v.delivery_missions[-1].shelf.id}",
+            AgvStatus.TO_SELECT: lambda v: f"table {v.delivery_missions[-1].work_cell.table_id}",
+            AgvStatus.TO_CHARGE: lambda v: f"charging station {v.charging_missions[-1].charging_station_id}",
+        }
+
+        target_func = status_target_mapping.get(self.status)
+        if target_func:
+            try:
+                return target_func(self)
+            except (IndexError, AttributeError):
+                logging.warning(f"Failed to get target for vehicle {self.id} with status {self.status}")
+                return "None"
+
+        return "None"
+
 
 def get_target_workcell(available_workcells: List[WorkCell], nearest_vehicle: AGV) -> WorkCell:
     return min(available_workcells, key=lambda work_cell: manhattan_distance(nearest_vehicle.loc, work_cell.loc))

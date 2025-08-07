@@ -62,7 +62,10 @@ from kiva_sim.simulation import simulation
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
 if __name__ == "__main__":
-    log_file = Path(__file__).parent / "logs" / "main.log"
+    log_folder = Path(__file__).parent / "logs"
+    log_folder.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    log_file = log_folder / f"simulation_{timestamp}.log"
     log = logging.basicConfig(
         filename=log_file,
         filemode="w",
