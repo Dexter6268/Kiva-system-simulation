@@ -177,14 +177,15 @@ class AGV:
 
     def meta_updates(
         self,
-        tables,
+        tables: List[Table],
         orders,
-        GLOBAL_AGV_MAP,
-        charging_stations,
-        is_last_to_return,
-        allowed_to_return,
+        GLOBAL_AGV_MAP: Map,
+        charging_stations: List[ChargingStation],
+        is_last_to_return: bool,
+        allowed_to_return: bool,
         revenue,
-    ):
+    ) -> float:
+        """Update the AGV's status and handle its missions."""
         num_suborders_unassigned = sum(
             sub_order.status == OrderStatus.TODO for order in orders for sub_order in order.sub_orders
         )
@@ -205,6 +206,7 @@ class AGV:
                 revenue = self.updates_status(
                     tables, orders, GLOBAL_AGV_MAP, charging_stations, is_last_to_return, revenue
                 )
+        return revenue
 
     def updates_status(
         self,

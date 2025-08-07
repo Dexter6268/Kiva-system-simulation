@@ -288,7 +288,7 @@ def simulation(
             num_agv_back_to_start = sum(agv.status == AgvStatus.BACK_TO_START for agv in vehicles)
             allowed_to_return = num_agv_back_to_start <= agv_num // 2
 
-            vehicle.meta_updates(
+            revenue = vehicle.meta_updates(
                 tables, orders, GLOBAL_AGV_MAP, charging_stations, is_last_to_return, allowed_to_return, revenue
             )
 
