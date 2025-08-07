@@ -2,13 +2,7 @@ import numpy as np
 import tkinter as tk
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from kiva_sim.maps import MAP
-
-SHELF_COORDS = MAP.shelf_coords
-TABLE_COORDS = MAP.table_coords
-CHARGING_STATION_COORD = MAP.charging_station_coords
-TABLE_NUM = len(TABLE_COORDS)
-CHARGING_STATION_NUM = len(CHARGING_STATION_COORD)
+from kiva_sim.maps import Map
 
 
 def get_optimal_figsize(map_shape, save_gif=False, margin_factor=0.9):
@@ -16,7 +10,7 @@ def get_optimal_figsize(map_shape, save_gif=False, margin_factor=0.9):
     根据地图比例和屏幕尺寸计算最优的figure尺寸
 
     Args:
-        map_grid: 地图网格
+        map: 地图网格
         save_gif: 是否为保存GIF（影响质量设置）
         margin_factor: 屏幕利用率（0.9表示使用90%的屏幕空间）
 
@@ -113,7 +107,7 @@ def get_precise_block_size(ax):
 
 
 def create_animation(
-    map_grid,
+    map: Map,
     sim_info,
     order_num,
     cost_agv,
@@ -126,7 +120,7 @@ def create_animation(
 ):
     """
     功能：生成仿真动画
-    :param map_grid: 2d-np.array，栅格地图矩阵（0代表可通行，1代表货架，2代表工作台）
+    :param map: 2d-np.array，栅格地图矩阵（0代表可通行，1代表货架，2代表工作台）
     :param sim_info: list of lists of tuples， 仿真信息列表
     :param order_num: int，订单数量
     :param agv_num: int，AGV数量
@@ -141,25 +135,31 @@ def create_animation(
     else:
         FONT_SIZE = 12
 
-    figsize = get_optimal_figsize(map_grid.shape[::-1], save_gif=SAVE_GIF)
+    shelf_coords = map.shelf_coords
+    table_coords = map.table_coords
+    charging_station_coords = map.charging_station_coords
+    table_num = len(table_coords)
+    charging_station_num = len(charging_station_coords)
+
+    figsize = get_optimal_figsize(map.shape[::-1], save_gif=SAVE_GIF)
     fig, ax = plt.subplots(dpi=100, figsize=figsize)
     table_x = []  # 工作台x坐标列表
     table_y = []  # 工作台y坐标列表
     charging_station_x = []
     charging_station_y = []
-    for i in range(TABLE_NUM):
-        table_x.append(TABLE_COORDS[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间
-        table_y.append(TABLE_COORDS[i][1] - 0.5)
+    for i in range(table_num):
+        table_x.append(table_coords[i][0] - 0.5)  # 减去0.5是为了将散点显示在栅格中间
+        table_y.append(table_coords[i][1] - 0.5)
         ax.scatter(table_y[i], table_x[i], s=80, c="white", marker=(f"${i}$"), zorder=2)
-    for i in range(CHARGING_STATION_NUM):
-        charging_station_x.append(CHARGING_STATION_COORD[i][0] - 0.5)
-        charging_station_y.append(CHARGING_STATION_COORD[i][1] - 0.5)
+    for i in range(charging_station_num):
+        charging_station_x.append(charging_station_coords[i][0] - 0.5)
+        charging_station_y.append(charging_station_coords[i][1] - 0.5)
         ax.scatter(charging_station_y[i], charging_station_x[i], s=80, c="white", marker=(f"${i}$"), zorder=2)
 
-    plt.xlim(-1, map_grid.shape[1] - 1)  # 将map的列数作为图中的x坐标
-    plt.ylim(map_grid.shape[0] - 1, -1)  # 将map的行数作为图中的y坐标
-    my_x_ticks = np.arange(0, map_grid.shape[1], 1)  # x轴刻度
-    my_y_ticks = np.arange(0, map_grid.shape[0], 1)  # y轴刻度
+    plt.xlim(-1, map.shape[1] - 1)  # 将map的列数作为图中的x坐标
+    plt.ylim(map.shape[0] - 1, -1)  # 将map的行数作为图中的y坐标
+    my_x_ticks = np.arange(0, map.shape[1], 1)  # x轴刻度
+    my_y_ticks = np.arange(0, map.shape[0], 1)  # y轴刻度
     plt.xticks(my_x_ticks)
     plt.yticks(my_y_ticks)
     plt.grid(True)  # 开启栅格
@@ -176,18 +176,17 @@ def create_animation(
 
     # 动画初始化
     # -------------------------------------------------------------------------------------------------------
-    t = len(sim_info)
     agv_num = len(sim_info[0]["agv_states"])
     ax.set_title(
         f"{order_num} orders completed with {agv_num} agvs with {order_complete_time} seconds",
         fontsize=FONT_SIZE,
     )
     # 货架
-    x_shelf = [coord[0] - 0.5 for coord in SHELF_COORDS]
-    y_shelf = [coord[1] - 0.5 for coord in SHELF_COORDS]
+    x_shelf = [coord[0] - 0.5 for coord in shelf_coords]
+    y_shelf = [coord[1] - 0.5 for coord in shelf_coords]
     sc_shelf = ax.scatter(y_shelf, x_shelf, s=BLOCK_SIZE, c="y", marker="s", label="shelf")
     # 货架id
-    for i in range(len(SHELF_COORDS)):
+    for i in range(len(shelf_coords)):
         ax.text(y_shelf[i], x_shelf[i], str(i), ha="center", va="center", c="white", zorder=2, fontweight="bold")
 
     # AGV本体
@@ -195,7 +194,8 @@ def create_animation(
     y_init = [row["y"] - 0.5 for row in sim_info[0]["agv_states"]]
     sc_position = ax.scatter(y_init, x_init, s=BLOCK_SIZE, c="k", marker="s", label="AGV", zorder=3)
     # AGV方向标识
-    x_direction_init = [row["x"] - 0.5 + 0.2 for row in sim_info[0]["agv_states"]]
+    offset_value = 0.2
+    x_direction_init = [row["x"] - 0.5 + offset_value for row in sim_info[0]["agv_states"]]
     sc_direction = ax.scatter(y_init, x_direction_init, s=BLOCK_SIZE * 0.25, c="r", marker="s", zorder=4)
     # AGV id
     sc_markers = [
@@ -207,18 +207,12 @@ def create_animation(
     ax.legend(bbox_to_anchor=(1, 1), loc="upper left", markerscale=0.3, fontsize=FONT_SIZE)
     # 计时
     timestep = ax.text(
-        map_grid.shape[1] - 0.8, 2, "time step: 0", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
+        map.shape[1] - 0.8, 2, "time step: 0", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
     )
     # AGV状态
-    status_head = ax.text(
-        -8,
-        4,
-        f"{'AGV info':>21}\n{'id':^7}{'status': ^16}{'target':^16}",
-        ha="left",
-        va="top",
-        fontsize=FONT_SIZE,
-        fontweight="bold",
-    )
+    agv_status_title = f"{'AGV info':>21}\n{'id':^7}{'status': ^16}{'target':^16}"
+    ax.text(-8, 4, agv_status_title, ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
+
     lines = (f"{id:^7}{sim_info[0]['agv_states'][id]['status']:^16}" for id in range(agv_num))
     text = "\n".join(lines) + "\n"
     status = ax.text(-8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
@@ -227,16 +221,16 @@ def create_animation(
     lines = (f"{sim_info[0]['agv_states'][i]['target']: ^16}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
     target = ax.text(-4, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
+
     # 电量
-    charge_head = ax.text(
-        47.2, 4, f"AGV info\n{'id':^7} battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
-    )
+    ax.text(47.2, 4, f"AGV info\n{'id':^7} battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
     lines = (f"{i:^7}{sim_info[0]['agv_states'][i]['battery']}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
-    battery = ax.text(map_grid.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
+    battery = ax.text(map.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
+
     # 订单完成数量
     orders_completed = ax.text(
-        map_grid.shape[1] - 0.8,
+        map.shape[1] - 0.8,
         3,
         f"order completed: {sim_info[0]["orders_completed"]} / {order_num}",
         ha="left",
@@ -245,7 +239,7 @@ def create_animation(
         fontweight="bold",
     )
     # 成本
-    cost_head = ax.text(-8, -1, "revenue and cost", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
+    ax.text(-8, -1, "revenue and cost", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
     text_cost = "revenue: 0\ncost_agv: 0\ncost_charging_station: 0\ncost_workers: 0\ntotal net revenue: 0"
     cost = ax.text(-8, 0, text_cost, ha="left", va="top", fontsize=FONT_SIZE)
 
@@ -295,13 +289,13 @@ def create_animation(
         # 更新成本信息
         total_net_revenue = (
             sim_info["revenue"] * 0.5
-            - (cost_agv * agv_num + cost_charging_station * CHARGING_STATION_NUM) * t
+            - (cost_agv * agv_num + cost_charging_station * charging_station_num) * t
             - cost_worker * table_num * min(t, order_complete_time)
         )
         text_cost = "revenue: {revenue:.1f}\ncost_agv: {cost_agv:.2f}\ncost_charging_station: {cost_charging_station:.2f}\ncost_workers: {cost_workers:.1f}\ntotal net revenue: {total_net_revenue:.1f}".format(
             revenue=sim_info["revenue"] * 0.5,
             cost_agv=cost_agv * agv_num * t,
-            cost_charging_station=cost_charging_station * CHARGING_STATION_NUM * t,
+            cost_charging_station=cost_charging_station * charging_station_num * t,
             cost_workers=cost_worker * table_num * min(t, order_complete_time),
             total_net_revenue=total_net_revenue,
         )
@@ -312,7 +306,6 @@ def create_animation(
 
         x_direction, y_direction = x.copy(), y.copy()
         direction2offset = {"up": (-1, 0), "right": (0, 1), "down": (1, 0), "left": (0, -1)}
-        offset_value = 0.2
         for i in range(agv_num):
             agv_direction = sim_info["agv_states"][i]["direction"]
             dx, dy = direction2offset[agv_direction]
@@ -328,10 +321,3 @@ def create_animation(
     ani = FuncAnimation(fig, update, frames=sim_info, interval=interval, repeat=False, cache_frame_data=False)  # type: ignore
     fps = 1000 / interval
     return ani, fps
-
-
-if __name__ == "__main__":
-    print(MAP.shape)
-    a = MAP.shape[::-1]
-    print(a)
-    print(MAP.shape)
