@@ -107,7 +107,7 @@ def get_precise_block_size(ax):
     return int(block_size)
 
 
-def create_animation(
+def create_animation_old(
     map: Map,
     sim_info: List[Dict],
     order_num: int,
@@ -228,15 +228,11 @@ def create_animation(
     battery = ax.text(map.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
 
     # 订单完成数量
+    order_completed_text = f"order completed: {sim_info[0]["orders_completed"]} / {order_num}"
     orders_completed = ax.text(
-        map.shape[1] - 0.8,
-        3,
-        f"order completed: {sim_info[0]["orders_completed"]} / {order_num}",
-        ha="left",
-        va="top",
-        fontsize=FONT_SIZE,
-        fontweight="bold",
+        map.shape[1] - 0.8, 3, order_completed_text, ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
     )
+
     # 成本
     ax.text(-8, -1, "revenue and cost", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold")
     text_cost = "revenue: 0\ncost_agv: 0\ncost_charging_station: 0\ncost_workers: 0\ntotal net revenue: 0"
@@ -322,6 +318,378 @@ def create_animation(
     return ani, fps
 
 
+def create_animation(
+    map: Map,
+    sim_info: List[Dict],
+    order_num: int,
+    cost_agv: float,
+    cost_charging_station: float,
+    cost_worker: float,
+    table_num: int,
+    order_complete_time: int,
+    interval: int,
+    SAVE_GIF=False,
+) -> Tuple[FuncAnimation, int]:
+    """生成仿真动画"""
+    # 提取地图信息
+    coords_info = _extract_map_coordinates(map)
+
+    # 创建图形和轴
+    fig, ax = _setup_figure_and_axes(map, SAVE_GIF)
+
+    # 绘制静态元素
+    scatter_objects = _draw_static_elements(ax, coords_info, SAVE_GIF)
+
+    # 初始化动态元素
+    agv_num = len(sim_info[0]["agv_states"])
+    dynamic_elements = _initialize_dynamic_elements(
+        ax,
+        map,
+        coords_info["shelf_coords"],
+        sim_info[0],
+        agv_num,
+        order_num,
+        order_complete_time,
+        scatter_objects["block_size"],
+        SAVE_GIF,
+    )
+
+    # 设置窗口调整事件
+    _setup_resize_handler(fig, ax, scatter_objects, dynamic_elements, coords_info, agv_num)
+
+    # 创建更新函数
+    update_func = _create_update_function(
+        dynamic_elements,
+        cost_agv,
+        cost_charging_station,
+        cost_worker,
+        table_num,
+        order_complete_time,
+        agv_num,
+        order_num,
+    )
+
+    # 创建动画
+    ani = FuncAnimation(fig, update_func, frames=sim_info, interval=interval, repeat=False, cache_frame_data=False)  # type: ignore
+    fps = 1000 // interval
+    return ani, fps
+
+
+def _extract_map_coordinates(map: Map) -> Dict:
+    """提取地图坐标信息"""
+    shelf_coords = np.array(map.shelf_coords)
+    table_coords = np.array(map.table_coords)
+    charging_station_coords = np.array(map.charging_station_coords)
+
+    return {
+        "shelf_coords": shelf_coords,
+        "table_coords": table_coords,
+        "charging_station_coords": charging_station_coords,
+        "shelf_num": len(shelf_coords),
+        "table_num": len(table_coords),
+        "charging_station_num": len(charging_station_coords),
+    }
+
+
+def _setup_figure_and_axes(map: Map, save_gif: bool) -> Tuple:
+    """设置图形和坐标轴"""
+    figsize = get_optimal_figsize(map.shape[::-1], save_gif=save_gif)
+    fig, ax = plt.subplots(dpi=100, figsize=figsize)
+
+    # 设置坐标轴
+    plt.xlim(-1, map.shape[1] - 1)
+    plt.ylim(map.shape[0] - 1, -1)
+
+    # 设置刻度
+    my_x_ticks = np.arange(0, map.shape[1], 1)
+    my_y_ticks = np.arange(0, map.shape[0], 1)
+    plt.xticks(my_x_ticks)
+    plt.yticks(my_y_ticks)
+    plt.grid(True)
+    plt.gca().set_aspect("equal", adjustable="box")
+
+    # 渲染一次以获取精确的轴尺寸
+    fig.canvas.draw()
+
+    return fig, ax
+
+
+def _draw_static_elements(ax, coords_info: Dict, save_gif: bool) -> Dict:
+    """绘制静态元素（工作台、充电站、货架）"""
+    block_size = get_precise_block_size(ax)
+    font_size = 18 if save_gif else 12
+
+    # 绘制工作台
+    table_coords = coords_info["table_coords"] - 0.5
+    table_x, table_y = table_coords[:, 0], table_coords[:, 1]
+    sc_table = ax.scatter(table_y, table_x, s=block_size, c="r", marker="s", label="table")
+
+    # 添加工作台标签
+    for i, (x, y) in enumerate(zip(table_x, table_y)):
+        ax.scatter(y, x, s=80, c="white", marker=(f"${i}$"), zorder=2)
+
+    # 绘制充电站
+    charging_coords = coords_info["charging_station_coords"] - 0.5
+    charging_x, charging_y = charging_coords[:, 0], charging_coords[:, 1]
+    sc_charging = ax.scatter(charging_y, charging_x, s=block_size, c="green", marker="s", label="charging_station")
+
+    # 添加充电站标签
+    for i, (x, y) in enumerate(zip(charging_x, charging_y)):
+        ax.scatter(y, x, s=80, c="white", marker=(f"${i}$"), zorder=2)
+
+    return {"sc_table": sc_table, "sc_charging": sc_charging, "block_size": block_size}
+
+
+def _initialize_dynamic_elements(
+    ax,
+    map: Map,
+    shelf_coords: np.ndarray,
+    initial_sim_info: Dict,
+    agv_num: int,
+    order_num: int,
+    order_complete_time: int,
+    block_size: int,
+    save_gif: bool,
+) -> Dict:
+    """初始化动态元素（AGV、文本信息等）"""
+    font_size = 18 if save_gif else 12
+
+    # 设置标题
+    ax.set_title(
+        f"{order_num} orders completed with {agv_num} agvs with {order_complete_time} seconds",
+        fontsize=font_size,
+    )
+
+    # 初始化AGV位置
+    agv_positions = np.array([[row["x"], row["y"]] for row in initial_sim_info["agv_states"]])
+    x_init = agv_positions[:, 0] - 0.5
+    y_init = agv_positions[:, 1] - 0.5
+
+    # AGV散点图
+    sc_position = ax.scatter(y_init, x_init, s=block_size, c="k", marker="s", label="AGV", zorder=3)
+
+    # AGV方向标识
+    offset_value = 0.2
+    x_direction_init = x_init + offset_value
+    sc_direction = ax.scatter(y_init, x_direction_init, s=block_size * 0.25, c="r", marker="s", zorder=4)
+
+    # AGV ID标记
+    sc_markers = [
+        ax.text(y_init[i], x_init[i], str(i), ha="center", va="center", c="white", zorder=5, fontweight="bold")
+        for i in range(agv_num)
+    ]
+
+    # 绘制货架
+    shelf_coords = shelf_coords - 0.5
+    x_shelf, y_shelf = shelf_coords[:, 0], shelf_coords[:, 1]
+    sc_shelf = ax.scatter(y_shelf, x_shelf, s=block_size, c="y", marker="s", label="shelf")
+
+    # 添加货架ID
+    for i, (x, y) in enumerate(zip(x_shelf, y_shelf)):
+        ax.text(y, x, str(i), ha="center", va="center", c="white", zorder=2, fontweight="bold")
+
+    # 图例
+    ax.legend(bbox_to_anchor=(1, 1), loc="upper left", markerscale=0.3, fontsize=font_size)
+
+    # 创建文本元素
+    text_elements = _create_text_elements(ax, map, initial_sim_info, agv_num, order_num, font_size)
+
+    return {
+        "sc_position": sc_position,
+        "sc_direction": sc_direction,
+        "sc_markers": sc_markers,
+        "sc_shelf": sc_shelf,
+        "offset_value": offset_value,
+        **text_elements,
+    }
+
+
+def _create_text_elements(ax, map: Map, initial_sim_info: Dict, agv_num: int, order_num: int, font_size: int) -> Dict:
+    """创建所有文本元素"""
+    # 时间步显示
+    timestep = ax.text(
+        map.shape[1] - 0.8, 2, "time step: 0", ha="left", va="top", fontsize=font_size, fontweight="bold"
+    )
+
+    # AGV状态信息
+    agv_status_title = f"{'AGV info':>21}\n{'id':^7}{'status': ^16}{'target':^16}"
+    ax.text(-8, 4, agv_status_title, ha="left", va="top", fontsize=font_size, fontweight="bold")
+
+    # AGV状态文本
+    status_lines = (f"{i:^7}{initial_sim_info['agv_states'][i]['status']:^16}" for i in range(agv_num))
+    status_text = "\n".join(status_lines) + "\n"
+    status = ax.text(-8, 5, status_text, ha="left", va="top", fontsize=font_size)
+
+    # AGV目标文本
+    target_lines = (f"{initial_sim_info['agv_states'][i]['target']: ^16}" for i in range(agv_num))
+    target_text = "\n".join(target_lines) + "\n"
+    target = ax.text(-4, 5, target_text, ha="left", va="top", fontsize=font_size)
+
+    # 电量信息
+    ax.text(47.2, 4, f"AGV info\n{'id':^7} battery", ha="left", va="top", fontsize=font_size, fontweight="bold")
+    battery_lines = (f"{i:^7}{initial_sim_info['agv_states'][i]['battery']}" for i in range(agv_num))
+    battery_text = "\n".join(battery_lines) + "\n"
+    battery = ax.text(map.shape[1] - 0.8, 5, battery_text, ha="left", va="top", fontsize=font_size)
+
+    # 订单完成数量
+    order_completed_text = f"order completed: {initial_sim_info['orders_completed']} / {order_num}"
+    orders_completed = ax.text(
+        map.shape[1] - 0.8, 3, order_completed_text, ha="left", va="top", fontsize=font_size, fontweight="bold"
+    )
+
+    # 成本信息
+    ax.text(-8, -1, "revenue and cost", ha="left", va="top", fontsize=font_size, fontweight="bold")
+    text_cost = "revenue: 0\ncost_agv: 0\ncost_charging_station: 0\ncost_workers: 0\ntotal net revenue: 0"
+    cost = ax.text(-8, 0, text_cost, ha="left", va="top", fontsize=font_size)
+
+    return {
+        "timestep": timestep,
+        "status": status,
+        "target": target,
+        "battery": battery,
+        "orders_completed": orders_completed,
+        "cost": cost,
+    }
+
+
+def _setup_resize_handler(fig, ax, scatter_objects: Dict, dynamic_elements: Dict, coords_info: Dict, agv_num: int):
+    """设置窗口大小变化事件处理"""
+
+    def on_resize(event):
+        if event.canvas == fig.canvas:
+            new_block_size = get_precise_block_size(ax)
+            new_direction_size = new_block_size * 0.25
+
+            # 更新散点图大小
+            scatter_objects["sc_table"].set_sizes([new_block_size] * coords_info["table_num"])
+            scatter_objects["sc_charging"].set_sizes([new_block_size] * coords_info["charging_station_num"])
+            dynamic_elements["sc_shelf"].set_sizes([new_block_size] * coords_info["shelf_num"])
+            dynamic_elements["sc_position"].set_sizes([new_block_size] * agv_num)
+            dynamic_elements["sc_direction"].set_sizes([new_direction_size] * agv_num)
+
+            fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("resize_event", on_resize)
+
+
+def _create_update_function(
+    dynamic_elements: Dict,
+    cost_agv: float,
+    cost_charging_station: float,
+    cost_worker: float,
+    table_num: int,
+    order_complete_time: int,
+    agv_num: int,
+    order_num: int,
+):
+    """创建动画更新函数"""
+
+    def update(sim_info):
+        # 更新AGV位置
+        agv_positions = np.array([[row["x"], row["y"]] for row in sim_info["agv_states"]])
+        x = agv_positions[:, 0] - 0.5
+        y = agv_positions[:, 1] - 0.5
+
+        t = sim_info["t"]
+
+        # 更新文本信息
+        _update_text_info(
+            dynamic_elements,
+            sim_info,
+            t,
+            agv_num,
+            order_num,
+            cost_agv,
+            cost_charging_station,
+            cost_worker,
+            table_num,
+            order_complete_time,
+        )
+
+        # 更新AGV视觉元素
+        _update_agv_visuals(dynamic_elements, sim_info, x, y, agv_num)
+
+    return update
+
+
+def _update_text_info(
+    dynamic_elements: Dict,
+    sim_info: Dict,
+    t: int,
+    agv_num: int,
+    order_num: int,
+    cost_agv: float,
+    cost_charging_station: float,
+    cost_worker: float,
+    table_num: int,
+    order_complete_time: int,
+):
+    """更新所有文本信息"""
+    # 更新时间步
+    dynamic_elements["timestep"].set_text(f"time step: {t}")
+
+    # 更新AGV状态
+    agv_states = sim_info["agv_states"]
+    status_lines = (f"{i: ^7}{agv_states[i]['status']: ^16}" for i in range(agv_num))
+    dynamic_elements["status"].set_text("\n".join(status_lines) + "\n")
+
+    # 更新AGV目标
+    target_lines = (f"{agv_states[i]['target']: ^16}" for i in range(agv_num))
+    dynamic_elements["target"].set_text("\n".join(target_lines) + "\n")
+
+    # 更新电量
+    battery_lines = (f"{i: ^7}{agv_states[i]['battery']}" for i in range(agv_num))
+    dynamic_elements["battery"].set_text("\n".join(battery_lines) + "\n")
+
+    # 更新订单完成数量
+    dynamic_elements["orders_completed"].set_text(f"order completed: {sim_info['orders_completed']} / {order_num}")
+
+    # 更新成本信息
+    charging_station_num = 4  # 需要从外部传入或计算
+    total_net_revenue = (
+        sim_info["revenue"] * 0.5
+        - (cost_agv * agv_num + cost_charging_station * charging_station_num) * t
+        - cost_worker * table_num * min(t, order_complete_time)
+    )
+
+    cost_text = (
+        f"revenue: {sim_info['revenue'] * 0.5:.1f}\n"
+        f"cost_agv: {cost_agv * agv_num * t:.2f}\n"
+        f"cost_charging_station: {cost_charging_station * charging_station_num * t:.2f}\n"
+        f"cost_workers: {cost_worker * table_num * min(t, order_complete_time):.1f}\n"
+        f"total net revenue: {total_net_revenue:.1f}"
+    )
+    dynamic_elements["cost"].set_text(cost_text)
+
+
+def _update_agv_visuals(dynamic_elements: Dict, sim_info: Dict, x: np.ndarray, y: np.ndarray, agv_num: int):
+    """更新AGV视觉元素"""
+    # 更新AGV颜色
+    agv_colors = [row["color"] for row in sim_info["agv_states"]]
+    shelf_colors = sim_info["shelf_states"]
+
+    # 计算方向偏移
+    offset_value = dynamic_elements["offset_value"]
+    direction2offset = {"up": (-1, 0), "right": (0, 1), "down": (1, 0), "left": (0, -1)}
+
+    x_direction, y_direction = x.copy(), y.copy()
+    for i in range(agv_num):
+        agv_direction = sim_info["agv_states"][i]["direction"]
+        dx, dy = direction2offset[agv_direction]
+        x_direction[i] += dx * offset_value
+        y_direction[i] += dy * offset_value
+
+        # 更新AGV ID位置
+        dynamic_elements["sc_markers"][i].set_position((y[i], x[i]))
+
+    # 更新散点图
+    dynamic_elements["sc_position"].set_offsets(np.c_[y, x])
+    dynamic_elements["sc_position"].set_color(agv_colors)
+    dynamic_elements["sc_shelf"].set_color(shelf_colors)
+    dynamic_elements["sc_direction"].set_offsets(np.c_[y_direction, x_direction])
+
+
+# ...existing code...
 if __name__ == "__main__":
     from kiva_sim.maps import load_map
 
