@@ -20,7 +20,7 @@ class Order:
         self.table_id: Optional[int] = None
 
     def __repr__(self):
-        return f"Order(id={self.id}, sub_orders={self.sub_orders}), table={self.table_id})"
+        return f"Order(id={self.id}, table={self.table_id})"
 
     @property
     def status(self) -> OrderStatus:
@@ -53,7 +53,9 @@ def init_orders(shelves: List[Shelf], order_num: int = int(np.random.normal(50, 
     shelf_num = len(shelves)
     for i in range(order_num):
         order_shelf_num = np.random.randint(1, 5)  # 1-4 shelves per order
+        logging.info(f"Generating order {i} with {order_shelf_num} shelves")
         shelf_ids = np.random.choice(shelf_num, order_shelf_num, replace=False).tolist()
+        logging.info(f"Order {i} shelf IDs: {shelf_ids}")
         # todo consider the case that some shelf isn't available
         sub_orders = [SubOrder(j, shelf_id) for j, shelf_id in enumerate(shelf_ids)]
         orders.append(Order(i, sub_orders))
@@ -101,6 +103,7 @@ def distribute_order(order: Order, vehicles: List[AGV], shelves: List[Shelf], ta
                 if available_workcells:
                     target_work_cell = get_target_workcell(available_workcells, nearest_vehicle)
                     new_mission = DeliveryMission(order.id, sub_order, shelf, target_work_cell)
+                    logging.info(f"new mission tsort: {new_mission.tsort}")
                     nearest_vehicle.assign_delivery_mission(new_mission)
                     order.table_id = target_work_cell.table_id
                     target_work_cell.occupied = True
@@ -114,6 +117,7 @@ def distribute_order(order: Order, vehicles: List[AGV], shelves: List[Shelf], ta
             else:
                 nearest_vehicle.status = AgvStatus.TO_SHELF
                 new_mission = DeliveryMission(order.id, sub_order, shelf)
+                logging.info(f"new mission tsort: {new_mission.tsort}")
                 nearest_vehicle.assign_delivery_mission(new_mission)
                 logging.info(f"vehicle {nearest_vehicle.id} assigned {shelf}")
 
