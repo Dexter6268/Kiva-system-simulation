@@ -213,7 +213,7 @@ def simulation(
     revenue = 0  # 订单完成收益
     GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
     t = 0  # 时间步
-    sim_info = []  # 仿真信息，用来实现可视化
+    animation_frames = []  # 仿真信息，用来实现可视化
     orders_completed_time = float("inf")
     tbreak = -1
 
@@ -223,7 +223,7 @@ def simulation(
     # -------------------------------------------------------------------------------------------------------
     while iteration < simu_max_iter:
         iteration += 1
-        agv_info = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
+        agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
         for order in orders:
             distribute_order(order, vehicles, shelves, tables)
@@ -261,7 +261,7 @@ def simulation(
         shelf_info = ["y"] * SHELF_NUM  # 货架颜色信息
         for vehicle in vehicles:
             # 录入AGV信息
-            agv_info.append(
+            agv_states.append(
                 {
                     "id": vehicle.id,
                     "x": vehicle.loc[0],
@@ -305,15 +305,14 @@ def simulation(
 
         num_orders_completed = sum(order.status == OrderStatus.DONE for order in orders)
 
-        sim_info.append(
-            {
-                "AGVInfo": agv_info,
-                "shelfInfo": shelf_info,
-                "orders_completed": num_orders_completed,
-                "t": t,
-                "revenue": revenue,
-            }
-        )
+        frame_data = {
+            "agv_states": agv_states,
+            "shelf_states": shelf_info,
+            "orders_completed": num_orders_completed,
+            "t": t,
+            "revenue": revenue,
+        }
+        animation_frames.append(frame_data)
 
         if t == tbreak:
             break
@@ -341,19 +340,19 @@ def simulation(
         f"AGV_COST: {AGV_COST * agv_num * t:.2f}, CHARGING_STATION_COST: {CHARGING_STATION_COST * CHARGING_STATION_NUM * t:.2f}, WORKER_COST: {WORKER_COST * TABLE_NUM * orders_completed_time:.1f}, revenue: {revenue * 0.5:.1f}"
     )
     logging.info(f"total net revenue: {total_net_revenue:.1f}")
-    logging.info(f"revenue_per_hour: {revenue_per_hour:.1f}")
+    logging.info(f"revenue per hour: {revenue_per_hour:.1f}")
     heat_map_data = np.zeros(MAP.shape)  # 热力图矩阵
     utilized_time = [0] * agv_num  # 各AGV被利用的时间步数
-    for info in sim_info:
-        for i, vehicle in enumerate(info["AGVInfo"]):
-            heat_map_data[vehicle["x"]][vehicle["y"]] += 1
-            if vehicle["status"] in [
+    for frame in animation_frames:
+        for id, agv_state in enumerate(frame["agv_states"]):
+            heat_map_data[agv_state["x"], agv_state["y"]] += 1
+            if agv_state["status"] in [
                 AgvStatus.TO_SHELF,
                 AgvStatus.TO_SELECT,
                 AgvStatus.SELECTING,
                 AgvStatus.RETURN_SHELF,
             ]:
-                utilized_time[i] += 1
+                utilized_time[id] += 1
     mean_utility = sum(utilized_time) / (t * agv_num)
     for i, ut in enumerate(utilized_time):
         logging.info(f"vehicle {i} utility {ut / t:.2%}")
@@ -373,11 +372,11 @@ def simulation(
 
     if show:
         # 货架颜色信息由于主循环内更新先后顺序原因出现1时间步错位，在此矫正。
-        for i in range(len(sim_info) - 1, 0, -1):
-            sim_info[i]["shelfInfo"] = sim_info[i - 1]["shelfInfo"]
+        for i in range(len(animation_frames) - 1, 0, -1):
+            animation_frames[i]["shelf_states"] = animation_frames[i - 1]["shelf_states"]
         ani, fps = create_animation(
             MAP,
-            sim_info,
+            animation_frames,
             order_num,
             AGV_COST,
             CHARGING_STATION_COST,

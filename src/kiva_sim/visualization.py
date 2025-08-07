@@ -127,7 +127,7 @@ def create_animation(
     """
     功能：生成仿真动画
     :param map_grid: 2d-np.array，栅格地图矩阵（0代表可通行，1代表货架，2代表工作台）
-    :param simInfo: list of lists of tuples， 仿真信息列表
+    :param sim_info: list of lists of tuples， 仿真信息列表
     :param order_num: int，订单数量
     :param agv_num: int，AGV数量
     :param cost_agv: int，AGV的单台购入及维护成本
@@ -177,7 +177,7 @@ def create_animation(
     # 动画初始化
     # -------------------------------------------------------------------------------------------------------
     t = len(sim_info)
-    agv_num = len(sim_info[0]["AGVInfo"])
+    agv_num = len(sim_info[0]["agv_states"])
     ax.set_title(
         f"{order_num} orders completed with {agv_num} agvs with {order_complete_time} seconds",
         fontsize=FONT_SIZE,
@@ -191,11 +191,11 @@ def create_animation(
         ax.text(y_shelf[i], x_shelf[i], str(i), ha="center", va="center", c="white", zorder=2, fontweight="bold")
 
     # AGV本体
-    x_init = [row["x"] - 0.5 for row in sim_info[0]["AGVInfo"]]
-    y_init = [row["y"] - 0.5 for row in sim_info[0]["AGVInfo"]]
+    x_init = [row["x"] - 0.5 for row in sim_info[0]["agv_states"]]
+    y_init = [row["y"] - 0.5 for row in sim_info[0]["agv_states"]]
     sc_position = ax.scatter(y_init, x_init, s=BLOCK_SIZE, c="k", marker="s", label="AGV", zorder=3)
     # AGV方向标识
-    x_direction_init = [row["x"] - 0.5 + 0.2 for row in sim_info[0]["AGVInfo"]]
+    x_direction_init = [row["x"] - 0.5 + 0.2 for row in sim_info[0]["agv_states"]]
     sc_direction = ax.scatter(y_init, x_direction_init, s=BLOCK_SIZE * 0.25, c="r", marker="s", zorder=4)
     # AGV id
     sc_markers = [
@@ -219,19 +219,19 @@ def create_animation(
         fontsize=FONT_SIZE,
         fontweight="bold",
     )
-    lines = (f"{id:^7}{sim_info[0]['AGVInfo'][id]['status']:^16}" for id in range(agv_num))
+    lines = (f"{id:^7}{sim_info[0]['agv_states'][id]['status']:^16}" for id in range(agv_num))
     text = "\n".join(lines) + "\n"
     status = ax.text(-8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
 
     # AGV目标
-    lines = (f"{sim_info[0]['AGVInfo'][i]['target']: ^16}" for i in range(agv_num))
+    lines = (f"{sim_info[0]['agv_states'][i]['target']: ^16}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
     target = ax.text(-4, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 电量
     charge_head = ax.text(
         47.2, 4, f"AGV info\n{'id':^7} battery", ha="left", va="top", fontsize=FONT_SIZE, fontweight="bold"
     )
-    lines = (f"{i:^7}{sim_info[0]['AGVInfo'][i]['battery']}" for i in range(agv_num))
+    lines = (f"{i:^7}{sim_info[0]['agv_states'][i]['battery']}" for i in range(agv_num))
     text = "\n".join(lines) + "\n"
     battery = ax.text(map_grid.shape[1] - 0.8, 5, text, ha="left", va="top", fontsize=FONT_SIZE)
     # 订单完成数量
@@ -271,21 +271,21 @@ def create_animation(
     # -------------------------------------------------------------------------------------------------------
     # 更新函数
     def update(sim_info):
-        x = [row["x"] - 0.5 for row in sim_info["AGVInfo"]]
-        y = [row["y"] - 0.5 for row in sim_info["AGVInfo"]]
+        x = [row["x"] - 0.5 for row in sim_info["agv_states"]]
+        y = [row["y"] - 0.5 for row in sim_info["agv_states"]]
         t = sim_info["t"]  # 时间步
         # 更新时间步信息
         timestep.set_text(f"time step: {t}")
         # 更新AGV状态信息
-        agv_info = sim_info["AGVInfo"]
-        lines = (f"{i: ^7}{agv_info[i]['status']: ^16}" for i in range(agv_num))
+        agv_states = sim_info["agv_states"]
+        lines = (f"{i: ^7}{agv_states[i]['status']: ^16}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         status.set_text(text)
-        lines = (f"{i: ^7}{agv_info[i]['battery']}" for i in range(agv_num))
+        lines = (f"{i: ^7}{agv_states[i]['battery']}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         battery.set_text(text)
         # 更新AGV目标
-        lines = (f"{agv_info[i]['target']: ^16}" for i in range(agv_num))
+        lines = (f"{agv_states[i]['target']: ^16}" for i in range(agv_num))
         text = "\n".join(lines) + "\n"
         target.set_text(text)
 
@@ -307,14 +307,14 @@ def create_animation(
         )
         cost.set_text(text_cost)
 
-        AGV_color = [row["color"] for row in sim_info["AGVInfo"]]
-        shelf_color = sim_info["shelfInfo"]
+        AGV_color = [row["color"] for row in sim_info["agv_states"]]
+        shelf_color = sim_info["shelf_states"]
 
         x_direction, y_direction = x.copy(), y.copy()
         direction2offset = {"up": (-1, 0), "right": (0, 1), "down": (1, 0), "left": (0, -1)}
         offset_value = 0.2
         for i in range(agv_num):
-            agv_direction = sim_info["AGVInfo"][i]["direction"]
+            agv_direction = sim_info["agv_states"][i]["direction"]
             dx, dy = direction2offset[agv_direction]
             x_direction[i] += dx * offset_value
             y_direction[i] += dy * offset_value
