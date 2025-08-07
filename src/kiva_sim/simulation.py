@@ -234,8 +234,6 @@ def simulation(
     # -------------------------------------------------------------------------------------------------------
     revenue = 0  # 订单完成收益
     GLOBAL_AGV_MAP, tables, vehicles, shelves, charging_stations, orders = init_simu(agv_num, order_num)
-    all_orders = set(orders)
-    completed_orders = set()
     t = 1  # 时间步
     animation_frames = []  # 仿真信息，用来实现可视化
     orders_completed_time = float("inf")
@@ -250,8 +248,7 @@ def simulation(
             break
         agv_states = []  # 包括AGV的位置、方向、颜色（是否正托举货架）、电量
         # 分配订单
-        unfinished_orders = all_orders - completed_orders
-        for order in unfinished_orders:
+        for order in orders:
             distribute_order(order, vehicles, shelves, tables)
 
         for vehicle in vehicles:
@@ -297,9 +294,7 @@ def simulation(
 
             update_frame_states(vehicle, agv_states, shelf_states)
 
-        completed_orders = set(order for order in orders if order.status == OrderStatus.DONE)
-        num_orders_completed = len(completed_orders)
-
+        num_orders_completed = sum(order.status == OrderStatus.DONE for order in orders)
         frame_data = {
             "agv_states": agv_states,
             "shelf_states": shelf_states,
