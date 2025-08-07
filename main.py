@@ -1,14 +1,23 @@
-import os
 import time
 import logging
-import numpy as np
-import pandas as pd
-from pathlib import Path
 from dotenv import load_dotenv
+from pathlib import Path
 
+log_folder = Path(__file__).resolve().parent / "logs"
+log_folder.mkdir(parents=True, exist_ok=True)
+timestamp = time.strftime("%Y%m%d_%H%M%S")
+log_file = log_folder / f"simulation_{timestamp}.log"
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)-8s | %(filename)-13s:%(lineno)-3d | %(message)s",
+    datefmt="%Y-%m-%d-%H:%M:%S",
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler(log_file, mode="w"),
+        # logging.StreamHandler(),
+    ],
+)
 load_dotenv()
 
-from kiva_sim.orders import init_orders, Order
 from kiva_sim.simulation import simulation
 
 
@@ -62,27 +71,17 @@ from kiva_sim.simulation import simulation
 # summary.to_excel('map1 AGV%d-%d.xlsx'%(AGV_start_num, AGV_end_num))
 
 if __name__ == "__main__":
-    log_folder = Path(__file__).parent / "logs"
-    log_folder.mkdir(parents=True, exist_ok=True)
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    log_file = log_folder / f"simulation_{timestamp}.log"
-    log = logging.basicConfig(
-        filename=log_file,
-        filemode="w",
-        format="%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s",
-        datefmt="%Y-%m-%d-%H:%M:%S",
-        level=logging.INFO,
-    )
-
-    order_num = 2  # 订单数量
-
+    logging.info("=== Simulation Starting ===")
+    order_num = 10  # 订单数量
+    logging.info(f"Running simulation with {order_num} orders")
     simulation(
         agv_num=12,
         order_num=order_num,
         interval=200,
-        show=True,
+        show=False,
         save_fig=False,
         heat_map=False,
         random_seed=100,
-        astar_max_iter=2000,
+        astar_max_iter=5000,
     )
+    logging.info("=== Simulation Completed ===")
