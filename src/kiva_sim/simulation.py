@@ -308,8 +308,9 @@ def simulation(
                 # 当AGV完成一个阶段的任务，更新AGV对象状态参数
                 if vehicle.point == len(vehicle.path) - 1:
                     num_idle_vehicles = sum(agv.status == AgvStatus.WAITING_AT_START for agv in vehicles)
+                    condition = num_idle_vehicles >= agv_num - 1
                     revenue = vehicle.updates_status(
-                        tables, orders, GLOBAL_AGV_MAP, charging_stations, num_idle_vehicles, agv_num, revenue
+                        tables, orders, GLOBAL_AGV_MAP, charging_stations, condition, revenue
                     )
 
         num_orders_completed = sum(order.status == OrderStatus.DONE for order in orders)

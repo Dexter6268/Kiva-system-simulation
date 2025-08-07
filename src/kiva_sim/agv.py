@@ -4,7 +4,7 @@ import os
 import logging
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import List, Tuple, Optional
 from kiva_sim.states import AgvStatus, Direction, OrderStatus
 from kiva_sim.maps import Map
 from kiva_sim.tables import Table
@@ -126,16 +126,11 @@ class AGV:
         self.battery += CHARGING_SPEED
         self.battery = min(self.battery, FULL_CHARGE)
 
-    def goto_charge(self, available_stations: list[ChargingStation], charging_stations: list[ChargingStation]) -> None:
-
-        shelf = self.delivery_missions[-1].shelf
-        shelf.agv = None
+    def goto_charge(self, available_stations: list[ChargingStation]) -> None:
         self.status = AgvStatus.TO_CHARGE
         logging.info(f"vehicle {self.id} to charge")
-        target_station = min(
-            available_stations,
-            key=lambda s: manhattan_distance(self.loc, s.loc),
-        )
+        self.delivery_missions[-1].shelf.agv = None
+        target_station = min(available_stations, key=lambda s: manhattan_distance(self.loc, s.loc))
         self.charging_missions.append(ChargingMission(target_station.id, target_station.loc))
         target_station.occupied = True
         self.point = 0
@@ -186,94 +181,138 @@ class AGV:
         orders,
         global_agv_map: Map,
         charging_stations: List[ChargingStation],
-        num_idle_vehicles: int,
-        agv_num: int,
+        condition: bool,
         revenue: float,
     ) -> float:
         """Update the AGV's status."""
-        last_delivery_mission = self.delivery_missions[-1]
-        if self.status == AgvStatus.TO_SHELF:
-            logging.info(f"vehicle {self.id} reached {last_delivery_mission.shelf} for the first time")
-            available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
-            if available_workcells:
-                target_work_cell = get_target_workcell(available_workcells, self)
-                orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
-                last_delivery_mission.work_cell = target_work_cell
 
-                target_work_cell.occupied = True
-                self.status = AgvStatus.TO_SELECT
-                logging.info(f"vehicle {self.id} going for {target_work_cell}")
-                self.point = 0
-            else:
-                self.status = AgvStatus.WAITING_TO_SELECT
-                logging.info(f"vehicle {self.id} waiting to select at position {self.loc}")
-        elif self.status == AgvStatus.TO_SELECT:
-            logging.info(f"vehicle {self.id} reached {last_delivery_mission.work_cell}")
-            self.status = AgvStatus.SELECTING
-            logging.info(f"vehicle {self.id} start selecting at position {self.loc}")
-        elif self.status == AgvStatus.RETURN_SHELF:
-            logging.info(f"vehicle {self.id} reached {last_delivery_mission.shelf} for the second time")
-            if self.check_battery(global_agv_map.shape):
-                # 更新货架在位情况
-                last_delivery_mission.shelf.agv = None
-                self.status = AgvStatus.AVAILABLE
-                self.point = 0
-            else:
-                available_stations = [station for station in charging_stations if not station.occupied]
-                if available_stations:
-                    self.goto_charge(available_stations, charging_stations)
-                else:
-                    self.status = AgvStatus.WAITING_TO_CHARGE
-                    logging.info(f"vehicle {self.id} waiting to charge")
-        elif self.status == AgvStatus.TO_CHARGE:
-            self.status = AgvStatus.CHARGING
-            logging.info(f"vehicle {self.id} start charging at position {self.loc}")
-        elif self.status == AgvStatus.SELECTING:
-            self.selecting_process += 1
-            assert isinstance(last_delivery_mission.tsort, int)
-            if self.selecting_process >= last_delivery_mission.tsort:
-                logging.info(
-                    f"vehicle {self.id} has finished selecting at position f{self.loc}, now returning {last_delivery_mission.shelf}"
-                )
-                self.status = AgvStatus.RETURN_SHELF
-                revenue += last_delivery_mission.tsort  # 结算分拣收益
-                assert last_delivery_mission.work_cell is not None
-                last_delivery_mission.work_cell.occupied = False
-                last_delivery_mission.sub_order.status = OrderStatus.DONE
-                self.selecting_process = 0
-                self.point = 0
-        elif self.status == AgvStatus.CHARGING:
-            self.charge()
-            if self.battery == FULL_CHARGE:
-                logging.info(f"vehicle {self.id} finished charging at position {self.loc}")
-                self.status = AgvStatus.AVAILABLE
-                charging_stations[self.charging_missions[-1].charging_station_id].occupied = False
-                self.point = 0
-        elif self.status == AgvStatus.WAITING_TO_SELECT:
-            available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
-            if available_workcells:
-                target_work_cell = get_target_workcell(available_workcells, self)
-                orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
-                last_delivery_mission.work_cell = target_work_cell
-                target_work_cell.occupied = True
-                self.status = AgvStatus.TO_SELECT
-                logging.info(f"vehicle {self.id} to select at {target_work_cell}")
-                self.point = 0
-            else:
-                logging.info(f"vehicle {self.id} waiting to select at position {self.loc}")
-        elif self.status == AgvStatus.WAITING_TO_CHARGE:
-            logging.info(f"vehicle {self.id} waiting to charge at position {self.loc}")
+        status_config = {
+            AgvStatus.TO_SHELF: (self._handle_to_shelf_status, [tables, orders, revenue]),
+            AgvStatus.TO_SELECT: (self._handle_to_select_status, [revenue]),
+            AgvStatus.RETURN_SHELF: (self._handle_return_shelf_status, [global_agv_map, charging_stations, revenue]),
+            AgvStatus.TO_CHARGE: (self._handle_to_charge_status, [revenue]),
+            AgvStatus.SELECTING: (self._handle_selecting_status, [revenue]),
+            AgvStatus.CHARGING: (self._handle_charging_status, [charging_stations, revenue]),
+            AgvStatus.WAITING_TO_SELECT: (self._handle_waiting_to_select_status, [tables, orders, revenue]),
+            AgvStatus.WAITING_TO_CHARGE: (self._handle_waiting_to_charge_status, [charging_stations, revenue]),
+            AgvStatus.BACK_TO_START: (self._handle_back_to_start_status, [global_agv_map, condition, revenue]),
+        }
+        config = status_config.get(self.status)
+        if config:
+            handler, required_params = config
+            return handler(*required_params)
+        return revenue
+
+    def _handle_to_shelf_status(self, tables, orders, revenue):
+        last_delivery_mission = self.delivery_missions[-1]
+        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
+        logging.info(f"vehicle {self.id} reached {last_delivery_mission.shelf} for the first time")
+        if available_workcells:
+            target_work_cell = get_target_workcell(available_workcells, self)
+            orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
+            last_delivery_mission.work_cell = target_work_cell
+
+            target_work_cell.occupied = True
+            self.status = AgvStatus.TO_SELECT
+            logging.info(f"vehicle {self.id} going for {target_work_cell}")
+            self.point = 0
+        else:
+            self.status = AgvStatus.WAITING_TO_SELECT
+            logging.info(f"vehicle {self.id} waiting to select at position {self.loc}")
+        return revenue
+
+    def _handle_to_select_status(self, revenue):
+        self.status = AgvStatus.SELECTING
+        logging.info(
+            f"vehicle {self.id} has reached {self.delivery_missions[-1].work_cell} and starts selecting at position {self.loc}"
+        )
+        return revenue
+
+    def _handle_return_shelf_status(self, global_agv_map, charging_stations, revenue):
+        last_delivery_mission = self.delivery_missions[-1]
+        logging.info(f"vehicle {self.id} reached {last_delivery_mission.shelf} for the second time")
+        if self.check_battery(global_agv_map.shape):
+            # 更新货架在位情况
+            last_delivery_mission.shelf.agv = None
+            self.status = AgvStatus.AVAILABLE
+            self.point = 0
+        else:
             available_stations = [station for station in charging_stations if not station.occupied]
             if available_stations:
-                self.goto_charge(available_stations, charging_stations)
-        elif self.status == AgvStatus.BACK_TO_START:
-            global_agv_map[self.start] = 4
-            if num_idle_vehicles < agv_num - 1:
-                logging.info(f"vehicle {self.id} arrived at start")
-                self.status = AgvStatus.ARRIVED_AT_START
-                self.point = 0
+                self.goto_charge(available_stations)
             else:
-                self.status = AgvStatus.WAITING_AT_START
+                self.status = AgvStatus.WAITING_TO_CHARGE
+                logging.info(f"vehicle {self.id} waiting to charge")
+        return revenue
+
+    def _handle_to_charge_status(self, revenue):
+        """Handle TO_CHARGE status transition."""
+        self.status = AgvStatus.CHARGING
+        logging.info(f"vehicle {self.id} start charging at position {self.loc}")
+        return revenue
+
+    def _handle_selecting_status(self, revenue):
+        """Handle SELECTING status transition."""
+        self.selecting_process += 1
+        last_delivery_mission = self.delivery_missions[-1]
+        assert last_delivery_mission.tsort is not None
+        if self.selecting_process >= last_delivery_mission.tsort:
+            logging.info(
+                f"vehicle {self.id} has finished selecting at position f{self.loc}, now returning {last_delivery_mission.shelf}"
+            )
+            self.status = AgvStatus.RETURN_SHELF
+            revenue += last_delivery_mission.tsort  # 结算分拣收益
+            assert last_delivery_mission.work_cell is not None
+            last_delivery_mission.work_cell.occupied = False
+            last_delivery_mission.sub_order.status = OrderStatus.DONE
+            self.selecting_process = 0
+            self.point = 0
+        return revenue
+
+    def _handle_charging_status(self, charging_stations, revenue):
+        """Handle CHARGING status transition."""
+        self.charge()
+        if self.battery == FULL_CHARGE:
+            logging.info(f"vehicle {self.id} finished charging at position {self.loc}")
+            self.status = AgvStatus.AVAILABLE
+            charging_stations[self.charging_missions[-1].charging_station_id].occupied = False
+            self.point = 0
+        return revenue
+
+    def _handle_waiting_to_select_status(self, tables, orders, revenue):
+        """Handle WAITING_TO_SELECT status transition."""
+        last_delivery_mission = self.delivery_missions[-1]
+        available_workcells = get_available_workcells(tables, orders[last_delivery_mission.order_id].table_id)
+        if not available_workcells:
+            logging.info(f"vehicle {self.id} waiting to select at position {self.loc}")
+            return revenue
+        target_work_cell = get_target_workcell(available_workcells, self)
+        orders[last_delivery_mission.order_id].table_id = target_work_cell.table_id
+        last_delivery_mission.work_cell = target_work_cell
+        target_work_cell.occupied = True
+        self.status = AgvStatus.TO_SELECT
+        logging.info(f"vehicle {self.id} to select at {target_work_cell}")
+        self.point = 0
+        return revenue
+
+    def _handle_waiting_to_charge_status(self, charging_stations, revenue):
+        """Handle WAITING_TO_CHARGE status transition."""
+        logging.info(f"vehicle {self.id} waiting to charge at position {self.loc}")
+        available_stations = [station for station in charging_stations if not station.occupied]
+        if available_stations:
+            self.goto_charge(available_stations)
+        return revenue
+
+    def _handle_back_to_start_status(self, global_agv_map, condition, revenue):
+        """Handle BACK_TO_START status transition."""
+        global_agv_map[self.start] = 4
+        if condition:
+            self.status = AgvStatus.WAITING_AT_START
+            return revenue
+
+        logging.info(f"vehicle {self.id} arrived at start")
+        self.status = AgvStatus.ARRIVED_AT_START
+        self.point = 0
         return revenue
 
 
@@ -283,8 +322,7 @@ def get_target_workcell(available_workcells: List[WorkCell], nearest_vehicle: AG
 
 def init_agvs(agv_num: int, map: Map) -> List[AGV]:
     dy = map.shape[1] // (agv_num + 1)
-    vehicles = [AGV(id=i, loc=(0, (i + 1) * dy), direction=Direction.DOWN) for i in range(agv_num)]
-    return vehicles
+    return [AGV(id=i, loc=(0, (i + 1) * dy), direction=Direction.DOWN) for i in range(agv_num)]
 
 
 if __name__ == "__main__":
