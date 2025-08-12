@@ -378,7 +378,7 @@ def simulation(
             TABLE_NUM,
             orders_completed_time,
             interval=interval,
-            SAVE_GIF=save_fig,
+            save_fig=save_fig,
         )
         if save_fig:
             save_folder = ROOT_PATH / "gifs"
